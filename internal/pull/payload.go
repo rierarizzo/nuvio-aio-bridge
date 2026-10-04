@@ -67,7 +67,8 @@ func Build(library []nuvio.LibraryItem, watched []nuvio.WatchedItem) (watchlist 
 		watchlist = append(watchlist, WatchRow{
 			Type:   typ,
 			MetaID: item.ContentID,
-			At:     item.AddedAt,
+			// Nuvio stores added_at in milliseconds; AIOStreams uses seconds.
+			At: item.AddedAt / 1000,
 		})
 	}
 
@@ -92,7 +93,7 @@ func Build(library []nuvio.LibraryItem, watched []nuvio.WatchedItem) (watchlist 
 	watchedSet.Movies = sortedKeys(movieSet)
 	watchedSet.Episodes = sortedKeys(episodeSet)
 
-	version = versionToken(watchlist, watchedSet)
+	version = versionToken(watchedSet)
 	return watchlist, watchedSet, version
 }
 
@@ -135,11 +136,12 @@ func BuildItems(progress []nuvio.ProgressItem) []Item {
 	return items
 }
 
-// VersionToken computes the version from the watchlist and watched sets. The
-// version only describes what the watched gate depends on; it is stable across
-// calls as long as the content is unchanged. `items` is never gated by it.
-func VersionToken(watchlist []WatchRow, watched Watched) string {
-	return versionToken(watchlist, watched)
+// VersionToken computes the version from the watched set. The version only
+// describes what the watched gate depends on; it is stable across calls as long
+// as the watched content is unchanged. `items` and `watchlist` are never gated
+// by it.
+func VersionToken(watched Watched) string {
+	return versionToken(watched)
 }
 
 func percent(position, duration int64) float64 {
@@ -153,11 +155,8 @@ func videoID(showID string, season, episode int) string {
 	return showID + ":" + itoa(season) + ":" + itoa(episode)
 }
 
-func versionToken(watchlist []WatchRow, watched Watched) string {
-	parts := make([]string, 0, len(watchlist)+len(watched.Movies)+len(watched.Episodes))
-	for _, row := range watchlist {
-		parts = append(parts, "w:"+row.Type+":"+row.MetaID)
-	}
+func versionToken(watched Watched) string {
+	parts := make([]string, 0, len(watched.Movies)+len(watched.Episodes))
 	for _, id := range watched.Movies {
 		parts = append(parts, "m:"+id)
 	}

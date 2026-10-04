@@ -37,20 +37,33 @@ func TestBuildFiltersAndSorts(t *testing.T) {
 }
 
 func TestVersionStableAndSensitive(t *testing.T) {
-	a := []nuvio.LibraryItem{{ContentID: "tt0137523", ContentType: "movie", AddedAt: 1}}
-	_, _, v1 := Build(a, nil)
-	_, _, v2 := Build(a, nil)
+	_, _, v1 := Build(nil, nil)
+	_, _, v2 := Build(nil, nil)
 	if v1 != v2 {
 		t.Errorf("version changed with identical input: %s vs %s", v1, v2)
 	}
 
-	b := []nuvio.LibraryItem{
-		{ContentID: "tt0137523", ContentType: "movie", AddedAt: 1},
-		{ContentID: "tt0903747", ContentType: "series", AddedAt: 2},
-	}
-	_, _, v3 := Build(b, nil)
+	watched := []nuvio.WatchedItem{{ContentID: "tt0137523", ContentType: "movie"}}
+	_, _, v3 := Build(nil, watched)
 	if v3 == v1 {
-		t.Error("version should change when content changes")
+		t.Error("version should change when watched content changes")
+	}
+}
+
+func TestVersionIgnoresWatchlist(t *testing.T) {
+	lib := []nuvio.LibraryItem{{ContentID: "tt0137523", ContentType: "movie", AddedAt: 1}}
+	_, _, withLib := Build(lib, nil)
+	_, _, without := Build(nil, nil)
+	if withLib != without {
+		t.Errorf("version should ignore the watchlist: %s vs %s", withLib, without)
+	}
+}
+
+func TestWatchlistAtIsSeconds(t *testing.T) {
+	lib := []nuvio.LibraryItem{{ContentID: "tt0137523", ContentType: "movie", AddedAt: 1_700_000_000_000}}
+	watchlist, _, _ := Build(lib, nil)
+	if len(watchlist) != 1 || watchlist[0].At != 1_700_000_000 {
+		t.Fatalf("watchlist = %+v", watchlist)
 	}
 }
 
