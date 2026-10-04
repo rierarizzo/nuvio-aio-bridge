@@ -181,6 +181,7 @@ same row counts it started with (library 1023, watched 1899, progress 29).
 | Clear progress | `sync_delete_watch_progress` **`{p_progress_key: <key>}`** | `204`, absent on read |
 
 Notes:
+
 - `sync_push_library` is a full snapshot replace. Send back only the fields
   Scrob's `_LIBRARY_PUSH_FIELDS` keeps (`content_id`, `content_type`, `name`,
   `poster`, `poster_shape`, `background`, `description`, `release_info`,
