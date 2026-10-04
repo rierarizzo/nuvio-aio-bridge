@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/keneth/nuvio-aio-bridge/internal/manifest"
 	"github.com/keneth/nuvio-aio-bridge/internal/nuvio"
@@ -229,16 +230,16 @@ func TestPushMapsEvents(t *testing.T) {
 	cases := []struct {
 		name string
 		body string
-		want string
+		want []string
 	}{
-		{"watchlisted", `{"id":"1","event":"watchlisted","scope":"movie","metaId":"tt0137523","at":1}`, "add"},
-		{"unwatchlisted", `{"id":"2","event":"unwatchlisted","scope":"movie","metaId":"tt0137523","at":1}`, "remove"},
-		{"played", `{"id":"3","event":"played","scope":"series","metaId":"tt0903747","season":3,"episode":7,"at":1}`, "mark"},
-		{"unplayed", `{"id":"4","event":"unplayed","scope":"series","metaId":"tt0903747","season":3,"episode":7,"at":1}`, "unmark"},
-		{"stop unfinished", `{"id":"5","event":"stop","scope":"movie","metaId":"tt0137523","positionMs":100,"durationMs":1000,"played":false,"at":1}`, "progress"},
-		{"stop finished", `{"id":"6","event":"stop","scope":"movie","metaId":"tt0137523","positionMs":1000,"durationMs":1000,"played":true,"at":1}`, "mark"},
-		{"start", `{"id":"7","event":"start","scope":"episode","metaId":"tt0903747","season":3,"episode":7,"positionMs":100,"durationMs":1000,"at":1}`, "progress"},
-		{"pause", `{"id":"8","event":"pause","scope":"episode","metaId":"tt0903747","season":3,"episode":7,"positionMs":200,"durationMs":1000,"at":1}`, "progress"},
+		{"watchlisted", `{"id":"1","event":"watchlisted","scope":"movie","metaId":"tt0137523","at":1}`, []string{"add"}},
+		{"unwatchlisted", `{"id":"2","event":"unwatchlisted","scope":"movie","metaId":"tt0137523","at":1}`, []string{"remove"}},
+		{"played", `{"id":"3","event":"played","scope":"series","metaId":"tt0903747","season":3,"episode":7,"at":1}`, []string{"mark", "delprogress"}},
+		{"unplayed", `{"id":"4","event":"unplayed","scope":"series","metaId":"tt0903747","season":3,"episode":7,"at":1}`, []string{"unmark", "delprogress"}},
+		{"stop unfinished", `{"id":"5","event":"stop","scope":"movie","metaId":"tt0137523","positionMs":100,"durationMs":1000,"played":false,"at":1}`, []string{"progress"}},
+		{"stop finished", `{"id":"6","event":"stop","scope":"movie","metaId":"tt0137523","positionMs":1000,"durationMs":1000,"played":true,"at":1}`, []string{"mark", "delprogress"}},
+		{"start", `{"id":"7","event":"start","scope":"episode","metaId":"tt0903747","season":3,"episode":7,"positionMs":100,"durationMs":1000,"at":1}`, []string{"progress"}},
+		{"pause", `{"id":"8","event":"pause","scope":"episode","metaId":"tt0903747","season":3,"episode":7,"positionMs":200,"durationMs":1000,"at":1}`, []string{"progress"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -250,8 +251,14 @@ func TestPushMapsEvents(t *testing.T) {
 			if rec.Code != http.StatusNoContent {
 				t.Fatalf("want 204, got %d", rec.Code)
 			}
-			if len(client.writeCalls) != 1 || client.writeCalls[0] != tc.want {
-				t.Errorf("writeCalls = %v, want [%s]", client.writeCalls, tc.want)
+			if len(client.writeCalls) != len(tc.want) {
+				t.Fatalf("writeCalls = %v, want %v", client.writeCalls, tc.want)
+			}
+			for i := range tc.want {
+				if client.writeCalls[i] != tc.want[i] {
+					t.Errorf("writeCalls = %v, want %v", client.writeCalls, tc.want)
+					break
+				}
 			}
 		})
 	}
@@ -433,6 +440,95 @@ func TestPullReturnsAuthOnAuthError(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401, got %d", rec.Code)
 	}
+}
+
+func TestHealthzNeedsNoToken(t *testing.T) {
+	srv := New("secret", &fakeClient{}, nil, nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+}
+
+// slowClient blocks every read until the request context is done, to exercise
+// the pull timeout.
+type slowClient struct{ fakeClient }
+
+func (s *slowClient) Library(ctx context.Context) ([]nuvio.LibraryItem, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (s *slowClient) Watched(ctx context.Context) ([]nuvio.WatchedItem, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (s *slowClient) Progress(ctx context.Context, _ int) ([]nuvio.ProgressItem, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestPullTimesOutWhenNuvioHangs(t *testing.T) {
+	srv := New("secret", &slowClient{}, nil, nil)
+	srv.pullTimeout = 40 * time.Millisecond
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("want 502 on timeout, got %d", rec.Code)
+	}
+}
+
+// concurrentClient signals when each read starts and blocks until released, so
+// a test can prove the three reads run concurrently.
+type concurrentClient struct {
+	fakeClient
+	started chan string
+	release chan struct{}
+}
+
+func (c *concurrentClient) Library(context.Context) ([]nuvio.LibraryItem, error) {
+	c.started <- "library"
+	<-c.release
+	return nil, nil
+}
+
+func (c *concurrentClient) Watched(context.Context) ([]nuvio.WatchedItem, error) {
+	c.started <- "watched"
+	<-c.release
+	return nil, nil
+}
+
+func (c *concurrentClient) Progress(context.Context, int) ([]nuvio.ProgressItem, error) {
+	c.started <- "progress"
+	<-c.release
+	return nil, nil
+}
+
+func TestPullReadsSourcesConcurrently(t *testing.T) {
+	started := make(chan string, 3)
+	release := make(chan struct{})
+	client := &concurrentClient{started: started, release: release}
+	srv := New("secret", client, nil, nil)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.Handler().ServeHTTP(httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
+	}()
+
+	for i := 0; i < 3; i++ {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			close(release)
+			t.Fatalf("only %d of 3 reads started; the pull is not concurrent", i)
+		}
+	}
+	close(release)
+	<-done
 }
 
 func ptr(n int) *int { return &n }

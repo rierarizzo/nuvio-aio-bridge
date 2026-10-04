@@ -1,28 +1,69 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/keneth/nuvio-aio-bridge/internal/nuvio"
 	"github.com/keneth/nuvio-aio-bridge/internal/pull"
 )
 
-// handlePull answers with Nuvio's current watchlist and watched history.
+// defaultPullTimeout bounds the whole pull handler. AIOStreams cuts the request
+// at 15s, so the bridge gives up earlier and answers instead of being cut off
+// mid-response.
+const defaultPullTimeout = 12 * time.Second
+
+// handlePull answers with Nuvio's current watchlist, watched history and
+// in-progress items.
 //
-// `watchlist` and `watched` are complete lists: on any read failure the field
-// is omitted rather than sent empty, because an empty list would delete what
+// The three reads run concurrently because each one pages through Nuvio and the
+// sum of the sequential calls would otherwise exceed the request budget.
+// `watchlist` and `watched` are complete lists: on any read failure the field is
+// omitted rather than sent empty, because an empty list would delete what
 // AIOStreams already imported. `version` is stable across calls, so a matching
 // `since` skips re-sending the unchanged watched half.
 func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	timeout := s.pullTimeout
+	if timeout <= 0 {
+		timeout = defaultPullTimeout
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+
 	since := r.URL.Query().Get("since")
 
-	library, err := s.nuvio.Library(ctx)
-	if err != nil {
-		s.log.Error("pull: library read failed", "err", err)
-		if errors.Is(err, nuvio.ErrAuth) || errors.Is(err, nuvio.ErrProfileNotFound) {
+	var (
+		library    []nuvio.LibraryItem
+		libErr     error
+		rows       []nuvio.WatchedItem
+		watchedErr error
+		progress   []nuvio.ProgressItem
+		progErr    error
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		library, libErr = s.nuvio.Library(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		rows, watchedErr = s.nuvio.Watched(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		progress, progErr = s.nuvio.Progress(ctx, 0)
+	}()
+	wg.Wait()
+
+	if libErr != nil {
+		s.log.Error("pull: library read failed", "err", libErr)
+		if errors.Is(libErr, nuvio.ErrAuth) || errors.Is(libErr, nuvio.ErrProfileNotFound) {
 			http.Error(w, "auth problem", http.StatusUnauthorized)
 			return
 		}
@@ -32,32 +73,28 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 
 	watchlist, watched, version := pull.Build(library, nil)
 
-	// The watched half needs a second call. If it fails, omit it (no info)
+	// The watched half needs a second pass. If it fails, omit it (no info)
 	// instead of sending an empty list that would wipe imported history.
-	watchedOK := true
-	rows, err := s.nuvio.Watched(ctx)
-	if err != nil {
-		s.log.Error("pull: watched read failed", "err", err)
-		watchedOK = false
-	} else {
+	watchedOK := watchedErr == nil
+	if watchedOK {
 		watchlist, watched, version = pull.Build(library, rows)
+	} else {
+		s.log.Error("pull: watched read failed", "err", watchedErr)
 	}
 
 	// The library read succeeded, so the watchlist is authoritative even when
 	// empty: send it so a favourite removed in Nuvio disappears in AIOStreams.
 	payload := pull.Payload{Watchlist: &watchlist}
-	if since != version {
-		if watchedOK {
-			w := watched
-			payload.Watched = &w
-		}
+	if since != version && watchedOK {
+		w := watched
+		payload.Watched = &w
 	}
 	payload.Version = version
 
 	// `items` is small, changes constantly and is never gated by `version`.
 	// A failed read omits it rather than sending an empty list.
-	if progress, err := s.nuvio.Progress(ctx, 0); err != nil {
-		s.log.Error("pull: progress read failed", "err", err)
+	if progErr != nil {
+		s.log.Error("pull: progress read failed", "err", progErr)
 	} else {
 		payload.Items = pull.BuildItems(progress)
 	}

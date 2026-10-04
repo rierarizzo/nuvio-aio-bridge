@@ -185,4 +185,47 @@ func TestApplyStartAndPauseSetProgress(t *testing.T) {
 	}
 }
 
+func TestApplyPlayedClearsProgress(t *testing.T) {
+	rec := &recorder{}
+	e := Event{Event: "played", Scope: "episode", MetaID: "tt0903747",
+		Season: ptr(3), Episode: ptr(7), At: 1}
+	ok, err := Apply(context.Background(), rec, nil, e)
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if len(rec.marked) != 1 {
+		t.Fatalf("marked = %+v", rec.marked)
+	}
+	if len(rec.delProg) != 1 || rec.delProg[0] != "tt0903747_s3e7" {
+		t.Fatalf("delProg = %v, want [tt0903747_s3e7]", rec.delProg)
+	}
+}
+
+func TestApplyUnplayedClearsProgress(t *testing.T) {
+	rec := &recorder{}
+	e := Event{Event: "unplayed", Scope: "movie", MetaID: "tt0137523"}
+	ok, err := Apply(context.Background(), rec, nil, e)
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if len(rec.unmarked) != 1 {
+		t.Fatalf("unmarked = %+v", rec.unmarked)
+	}
+	if len(rec.delProg) != 1 || rec.delProg[0] != "tt0137523" {
+		t.Fatalf("delProg = %v, want [tt0137523]", rec.delProg)
+	}
+}
+
+func TestApplyStopFinishedClearsProgress(t *testing.T) {
+	rec := &recorder{}
+	played := true
+	e := Event{Event: "stop", Scope: "movie", MetaID: "tt0137523", Played: &played, At: 1}
+	if ok, err := Apply(context.Background(), rec, nil, e); err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if len(rec.marked) != 1 || len(rec.delProg) != 1 || rec.delProg[0] != "tt0137523" {
+		t.Fatalf("marked=%+v delProg=%v", rec.marked, rec.delProg)
+	}
+}
+
 func ptr(n int) *int { return &n }

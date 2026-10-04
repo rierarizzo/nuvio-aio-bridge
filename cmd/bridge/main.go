@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +20,14 @@ import (
 )
 
 func main() {
+	// The container HEALTHCHECK re-executes the binary with -healthcheck so the
+	// distroless image needs no shell or curl.
+	healthcheck := flag.Bool("healthcheck", false, "probe the local /healthz endpoint and exit")
+	flag.Parse()
+	if *healthcheck {
+		os.Exit(probeHealth())
+	}
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	cfg, err := config.Load()
@@ -69,4 +78,24 @@ func main() {
 	if err := httpServer.Shutdown(ctx); err != nil {
 		logger.Error("shutdown", "err", err)
 	}
+}
+
+// probeHealth queries the local /healthz endpoint for the container
+// HEALTHCHECK. It reads PORT directly so it does not need the full (and
+// credential-backed) configuration load.
+func probeHealth() int {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = strconv.Itoa(config.DefaultPort)
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+	if err != nil {
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }

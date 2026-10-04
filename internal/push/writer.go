@@ -61,30 +61,14 @@ func Apply(ctx context.Context, w Writer, resolver Resolver, e Event) (bool, err
 		return true, w.RemoveFromLibrary(ctx, imdb)
 
 	case "played":
-		return true, w.MarkWatched(ctx, nuvio.WatchedItem{
-			ContentID:   imdb,
-			ContentType: e.MetaType(),
-			Season:      e.Season,
-			Episode:     e.Episode,
-			WatchedAt:   e.At * 1000,
-		})
+		return true, markPlayed(ctx, w, e, imdb)
 
 	case "unplayed":
-		return true, w.DeleteWatched(ctx, nuvio.WatchedKey{
-			ContentID: imdb,
-			Season:    e.Season,
-			Episode:   e.Episode,
-		})
+		return true, clearPlayed(ctx, w, e, imdb)
 
 	case "stop":
 		if e.Played != nil && *e.Played {
-			return true, w.MarkWatched(ctx, nuvio.WatchedItem{
-				ContentID:   imdb,
-				ContentType: e.MetaType(),
-				Season:      e.Season,
-				Episode:     e.Episode,
-				WatchedAt:   e.At * 1000,
-			})
+			return true, markPlayed(ctx, w, e, imdb)
 		}
 		return true, setProgress(ctx, w, e, imdb)
 
@@ -96,6 +80,41 @@ func Apply(ctx context.Context, w Writer, resolver Resolver, e Event) (bool, err
 	default:
 		return false, nil
 	}
+}
+
+// markPlayed records a watched entry and clears any resume point for the same
+// key, so a finished title does not keep a stale position inside Nuvio.
+func markPlayed(ctx context.Context, w Writer, e Event, imdb string) error {
+	if err := w.MarkWatched(ctx, nuvio.WatchedItem{
+		ContentID:   imdb,
+		ContentType: e.MetaType(),
+		Season:      e.Season,
+		Episode:     e.Episode,
+		WatchedAt:   e.At * 1000,
+	}); err != nil {
+		return err
+	}
+	return deleteProgress(ctx, w, e)
+}
+
+// clearPlayed removes the watched mark and the resume point for the same key.
+func clearPlayed(ctx context.Context, w Writer, e Event, imdb string) error {
+	if err := w.DeleteWatched(ctx, nuvio.WatchedKey{
+		ContentID: imdb,
+		Season:    e.Season,
+		Episode:   e.Episode,
+	}); err != nil {
+		return err
+	}
+	return deleteProgress(ctx, w, e)
+}
+
+func deleteProgress(ctx context.Context, w Writer, e Event) error {
+	key := e.ProgressKey()
+	if key == "" {
+		return nil
+	}
+	return w.DeleteProgress(ctx, key)
 }
 
 func setProgress(ctx context.Context, w Writer, e Event, imdb string) error {

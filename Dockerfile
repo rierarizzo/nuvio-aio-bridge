@@ -13,4 +13,5 @@ FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/bridge /bridge
 EXPOSE 8080
 USER nonroot:nonroot
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD ["/bridge", "--healthcheck"]
 ENTRYPOINT ["/bridge"]
