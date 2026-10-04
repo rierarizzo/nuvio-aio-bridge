@@ -8,3 +8,6 @@
 /bin/
 __pycache__/
 *.pyc
+
+# Local notes (never committed)
+*.local.md
