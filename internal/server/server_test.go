@@ -145,6 +145,31 @@ func TestPullBuildsWatchlistAndWatched(t *testing.T) {
 	}
 }
 
+func TestPullSendsEmptyWatchlistToClearFavourites(t *testing.T) {
+	// An empty library must still send `watchlist: []`, otherwise AIOStreams
+	// reads the field as absent and keeps a favourite that Nuvio removed.
+	reader := &fakeClient{library: nil, watched: []nuvio.WatchedItem{}}
+	srv := New("secret", reader, nil, nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	raw, ok := body["watchlist"]
+	if !ok {
+		t.Fatal("watchlist must be present even when empty")
+	}
+	var list []any
+	if err := json.Unmarshal(raw, &list); err != nil {
+		t.Fatalf("decode watchlist: %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("watchlist = %v, want []", list)
+	}
+}
+
 func TestPullOmitsWatchedWhenSinceMatches(t *testing.T) {
 	reader := &fakeClient{
 		library: []nuvio.LibraryItem{{ContentID: "tt0137523", ContentType: "movie"}},

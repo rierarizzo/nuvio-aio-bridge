@@ -37,7 +37,9 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 		watchlist, watched, version = pull.Build(library, rows)
 	}
 
-	payload := pull.Payload{Watchlist: watchlist}
+	// The library read succeeded, so the watchlist is authoritative even when
+	// empty: send it so a favourite removed in Nuvio disappears in AIOStreams.
+	payload := pull.Payload{Watchlist: &watchlist}
 	if since != version {
 		if watchedOK {
 			w := watched
@@ -54,10 +56,14 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 		payload.Items = pull.BuildItems(progress)
 	}
 
+	watchlistCount := 0
+	if payload.Watchlist != nil {
+		watchlistCount = len(*payload.Watchlist)
+	}
 	s.log.Info("pull served",
 		"since", since,
 		"version", version,
-		"watchlist", len(payload.Watchlist),
+		"watchlist", watchlistCount,
 		"watched_sent", payload.Watched != nil,
 		"items", len(payload.Items),
 	)

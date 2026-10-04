@@ -16,11 +16,15 @@ import (
 const finishedPercent = 90.0
 
 // Payload is the body of `GET /{token}/watch_state/pull.json`.
+//
+// `watchlist` is a pointer so a successful read that found nothing sends `[]`
+// (which clears the favourites) rather than omitting the field (which means
+// "no information"). `watched` works the same way.
 type Payload struct {
-	Version   string     `json:"version"`
-	Items     []Item     `json:"items,omitempty"`
-	Watched   *Watched   `json:"watched,omitempty"`
-	Watchlist []WatchRow `json:"watchlist,omitempty"`
+	Version   string      `json:"version"`
+	Items     []Item      `json:"items,omitempty"`
+	Watched   *Watched    `json:"watched,omitempty"`
+	Watchlist *[]WatchRow `json:"watchlist,omitempty"`
 }
 
 // Watched is the watched half of the answer.
