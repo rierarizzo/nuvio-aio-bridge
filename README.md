@@ -37,6 +37,7 @@ All routes live under `/{BRIDGE_TOKEN}`, the addon base URL.
 | `NUVIO_API_URL` | no | Defaults to `https://api.nuvio.tv` |
 | `NUVIO_ANON_KEY` | no | Defaults to Nuvio's public backend key |
 | `TMDB_API_KEY` | no | Enables TMDB artwork for favourites added from AIOStreams |
+| `TMDB_BASE_URL` | no | TMDB API base, defaults to `https://api.themoviedb.org/3` |
 | `METADATA_URL` | no | Cinemeta fallback, defaults to `https://v3-cinemeta.strem.io` |
 | `PORT` | no | Defaults to `8080` |
 

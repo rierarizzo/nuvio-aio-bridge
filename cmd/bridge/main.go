@@ -33,7 +33,10 @@ func main() {
 	cinemeta := metadata.New(cfg.MetadataURL)
 	var resolver metadata.Resolver = cinemeta
 	if cfg.TMDBAPIKey != "" {
+		logger.Info("metadata resolver", "tmdb", true)
 		resolver = metadata.NewChain(metadata.NewTMDB(cfg.TMDBAPIKey, cfg.TMDBBaseURL), cinemeta)
+	} else {
+		logger.Info("metadata resolver", "tmdb", false)
 	}
 
 	httpServer := &http.Server{

@@ -143,7 +143,8 @@ The resolver is a chain:
 1. **TMDB** when `TMDB_API_KEY` is set. It looks the title up by IMDb id and
    stores the same `image.tmdb.org/t/p/w500` poster and `w1280` backdrop Nuvio
    itself uses, so a favourite added from AIOStreams looks identical to one
-   added in Nuvio.
+   added in Nuvio. Genres are derived from TMDB's `genre_ids` with local tables,
+   because the `find` endpoint returns ids, not names.
 2. **Cinemeta** (`METADATA_URL`) otherwise, with Metahub artwork upgraded from
    `small` to `large`.
 

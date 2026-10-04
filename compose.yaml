@@ -20,6 +20,9 @@ services:
       NUVIO_PROFILE: ${NUVIO_PROFILE}
       NUVIO_API_URL: ${NUVIO_API_URL:-https://api.nuvio.tv}
       NUVIO_ANON_KEY: ${NUVIO_ANON_KEY:-sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      TMDB_BASE_URL: ${TMDB_BASE_URL:-https://api.themoviedb.org/3}
+      METADATA_URL: ${METADATA_URL:-https://v3-cinemeta.strem.io}
       BRIDGE_TOKEN: ${BRIDGE_TOKEN}
       PORT: "8080"
     networks:

@@ -19,6 +19,26 @@ const (
 	tmdbBackdrop   = "w1280"
 )
 
+// tmdbMovieGenres and tmdbTVGenres translate TMDB genre ids to names. Movies
+// and TV share some ids (18, 35, ...) but not all (Action is 28 for movies and
+// 10759 for TV), so the table depends on the media type. The `find` endpoint
+// returns only ids, not names.
+var tmdbMovieGenres = map[int]string{
+	28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy",
+	80: "Crime", 99: "Documentary", 18: "Drama", 10751: "Family",
+	14: "Fantasy", 36: "History", 27: "Horror", 10402: "Music",
+	9648: "Mystery", 10749: "Romance", 878: "Science Fiction",
+	10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western",
+}
+
+var tmdbTVGenres = map[int]string{
+	10759: "Action & Adventure", 16: "Animation", 35: "Comedy",
+	80: "Crime", 99: "Documentary", 18: "Drama", 10751: "Family",
+	10762: "Kids", 9648: "Mystery", 10763: "News", 10764: "Reality",
+	10765: "Sci-Fi & Fantasy", 10766: "Soap", 10767: "Talk",
+	10768: "War & Politics", 37: "Western",
+}
+
 // TMDB resolves metadata from TMDB, the same source Nuvio itself uses, so a
 // favourite added from AIOStreams gets the same artwork as one added in Nuvio.
 type TMDB struct {
@@ -57,10 +77,7 @@ type tmdbEntity struct {
 	ReleaseDate  string  `json:"release_date"`
 	FirstAirDate string  `json:"first_air_date"`
 	VoteAverage  float64 `json:"vote_average"`
-	Genres       []struct {
-		Name string `json:"name"`
-	} `json:"genres"`
-	GenreIDs []int `json:"genre_ids"`
+	GenreIDs     []int   `json:"genre_ids"`
 }
 
 // Resolve looks a title up by IMDb id and returns Nuvio-ready metadata.
@@ -143,9 +160,7 @@ func (t *TMDB) fetch(ctx context.Context, mediaType, imdbID string) (Meta, bool)
 	if entity.BackdropPath != "" {
 		meta.Background = tmdbImage(entity.BackdropPath, tmdbBackdrop)
 	}
-	for _, g := range entity.Genres {
-		meta.Genres = append(meta.Genres, g.Name)
-	}
+	meta.Genres = tmdbGenreNames(mediaType, entity.GenreIDs)
 	return meta, true
 }
 
@@ -158,4 +173,27 @@ func year(date string) string {
 		return date[:4]
 	}
 	return date
+}
+
+// tmdbGenreNames maps genre ids to names, preserving order and dropping
+// unknown ids rather than guessing. It returns an empty slice on no match.
+func tmdbGenreNames(mediaType string, ids []int) []string {
+	table := tmdbMovieGenres
+	if mediaType == "series" {
+		table = tmdbTVGenres
+	}
+	out := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		name, ok := table[id]
+		if !ok {
+			continue
+		}
+		if _, dup := seen[name]; dup {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
 }
