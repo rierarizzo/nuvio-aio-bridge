@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -169,5 +170,72 @@ func TestLibraryPaginates(t *testing.T) {
 	}
 	if len(items) != 10 {
 		t.Errorf("library = %d, want 10", len(items))
+	}
+}
+
+func TestMergeLibraryItemPreservesExisting(t *testing.T) {
+	rating := 8.0
+	existing := LibraryItem{
+		ContentID: "tt0137523", ContentType: "movie", Name: "Fight Club",
+		Poster: "poster", PosterShape: "poster", Background: "bg",
+		Description: "desc", ReleaseInfo: "1999", IMDBRating: &rating,
+		Genres: []string{"Drama"}, AddonBase: "base", AddedAt: 123,
+	}
+	incoming := LibraryItem{ContentID: "tt0137523", ContentType: "movie", Name: "New"}
+
+	merged := mergeLibraryItem(existing, incoming)
+	if merged.Name != "New" {
+		t.Errorf("incoming name should win, got %q", merged.Name)
+	}
+	if merged.Poster != "poster" || merged.Background != "bg" || merged.Description != "desc" {
+		t.Errorf("image/description lost: %+v", merged)
+	}
+	if merged.IMDBRating == nil || *merged.IMDBRating != 8.0 {
+		t.Errorf("rating lost: %v", merged.IMDBRating)
+	}
+	if len(merged.Genres) != 1 || merged.Genres[0] != "Drama" {
+		t.Errorf("genres lost: %+v", merged.Genres)
+	}
+	if merged.AddonBase != "base" || merged.AddedAt != 123 {
+		t.Errorf("remote fields lost: %+v", merged)
+	}
+}
+
+func TestAddToLibrarySerializesWrites(t *testing.T) {
+	// The library write is read-modify-write, so concurrent writers must not
+	// read the library at the same time or they would overwrite each other.
+	var inflight, overlap int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/auth/v1/token", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(authSession{AccessToken: "a", RefreshToken: "r", ExpiresIn: 3600})
+	})
+	mux.HandleFunc("/rest/v1/rpc/sync_pull_library", func(w http.ResponseWriter, _ *http.Request) {
+		if atomic.AddInt32(&inflight, 1) > 1 {
+			atomic.StoreInt32(&overlap, 1)
+		}
+		time.Sleep(25 * time.Millisecond)
+		atomic.AddInt32(&inflight, -1)
+		_ = json.NewEncoder(w).Encode([]map[string]any{})
+	})
+	mux.HandleFunc("/rest/v1/rpc/", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{})
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	c := New(ts.URL, "anon", "u@example.com", "p", 1)
+	ids := []string{"tt0000001", "tt0000002", "tt0000003", "tt0000004"}
+	var wg sync.WaitGroup
+	for _, id := range ids {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			_ = c.AddToLibrary(context.Background(), LibraryItem{ContentID: id, ContentType: "movie"})
+		}(id)
+	}
+	wg.Wait()
+
+	if atomic.LoadInt32(&overlap) != 0 {
+		t.Error("library reads overlapped: AddToLibrary is not serialized")
 	}
 }

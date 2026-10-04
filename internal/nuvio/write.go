@@ -24,8 +24,12 @@ type ProgressEntry struct {
 
 // AddToLibrary merges one item into the library and pushes the full snapshot
 // back. Nuvio replaces the library wholesale, so unrelated remote items are
-// preserved by reading first.
+// preserved by reading first. The lock serialises concurrent writers, which
+// would otherwise lose each other's read-modify-write.
 func (c *Client) AddToLibrary(ctx context.Context, item LibraryItem) error {
+	c.libMu.Lock()
+	defer c.libMu.Unlock()
+
 	items, err := c.Library(ctx)
 	if err != nil {
 		return err
@@ -34,7 +38,7 @@ func (c *Client) AddToLibrary(ctx context.Context, item LibraryItem) error {
 	found := false
 	for _, current := range items {
 		if current.ContentID == item.ContentID {
-			existing = append(existing, item)
+			existing = append(existing, mergeLibraryItem(current, item))
 			found = true
 			continue
 		}
@@ -48,6 +52,9 @@ func (c *Client) AddToLibrary(ctx context.Context, item LibraryItem) error {
 
 // RemoveFromLibrary removes one content id and pushes the rest back.
 func (c *Client) RemoveFromLibrary(ctx context.Context, contentID string) error {
+	c.libMu.Lock()
+	defer c.libMu.Unlock()
+
 	items, err := c.Library(ctx)
 	if err != nil {
 		return err
@@ -60,6 +67,44 @@ func (c *Client) RemoveFromLibrary(ctx context.Context, contentID string) error 
 		kept = append(kept, current)
 	}
 	return c.pushLibrary(ctx, kept)
+}
+
+// mergeLibraryItem keeps the stored fields when the incoming item leaves them
+// empty. A favourite whose metadata could not be resolved must not wipe the
+// metadata already present in Nuvio.
+func mergeLibraryItem(existing, incoming LibraryItem) LibraryItem {
+	merged := incoming
+	if merged.Name == "" {
+		merged.Name = existing.Name
+	}
+	if merged.Poster == "" {
+		merged.Poster = existing.Poster
+	}
+	if merged.PosterShape == "" {
+		merged.PosterShape = existing.PosterShape
+	}
+	if merged.Background == "" {
+		merged.Background = existing.Background
+	}
+	if merged.Description == "" {
+		merged.Description = existing.Description
+	}
+	if merged.ReleaseInfo == "" {
+		merged.ReleaseInfo = existing.ReleaseInfo
+	}
+	if merged.IMDBRating == nil {
+		merged.IMDBRating = existing.IMDBRating
+	}
+	if len(merged.Genres) == 0 {
+		merged.Genres = existing.Genres
+	}
+	if merged.AddonBase == "" {
+		merged.AddonBase = existing.AddonBase
+	}
+	if merged.AddedAt == 0 {
+		merged.AddedAt = existing.AddedAt
+	}
+	return merged
 }
 
 // pushLibrary sends content fields only; the server manages the rest.

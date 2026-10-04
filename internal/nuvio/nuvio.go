@@ -34,6 +34,10 @@ type Client struct {
 	accessToken  string
 	refreshToken string
 	expiresAt    time.Time
+
+	// libMu serialises the read-modify-write of the whole library snapshot, so
+	// concurrent favourite events cannot overwrite each other's changes.
+	libMu sync.Mutex
 }
 
 // New builds a client. It performs no network calls.
