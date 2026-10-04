@@ -28,11 +28,17 @@ func main() {
 	}
 
 	nuvioClient := nuvio.New(cfg.NuvioAPIURL, cfg.NuvioAnonKey, cfg.NuvioEmail, cfg.NuvioPassword, cfg.NuvioProfile)
-	metadataClient := metadata.New(cfg.MetadataURL)
+
+	// TMDB first, so artwork matches Nuvio's own; Cinemeta covers the rest.
+	cinemeta := metadata.New(cfg.MetadataURL)
+	var resolver metadata.Resolver = cinemeta
+	if cfg.TMDBAPIKey != "" {
+		resolver = metadata.NewChain(metadata.NewTMDB(cfg.TMDBAPIKey, cfg.TMDBBaseURL), cinemeta)
+	}
 
 	httpServer := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
-		Handler:           server.New(cfg.BridgeToken, nuvioClient, metadataClient, logger).Handler(),
+		Handler:           server.New(cfg.BridgeToken, nuvioClient, resolver, logger).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

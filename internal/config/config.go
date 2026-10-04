@@ -13,6 +13,7 @@ const (
 	DefaultNuvioAPIURL  = "https://api.nuvio.tv"
 	DefaultNuvioAnonKey = "sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN"
 	DefaultMetadataURL  = "https://v3-cinemeta.strem.io"
+	DefaultTMDBBaseURL  = "https://api.themoviedb.org/3"
 	DefaultPort         = 8080
 )
 
@@ -25,6 +26,8 @@ type Config struct {
 	NuvioAPIURL   string
 	NuvioAnonKey  string
 	MetadataURL   string
+	TMDBAPIKey    string
+	TMDBBaseURL   string
 	BridgeToken   string
 	Port          int
 }
@@ -37,6 +40,8 @@ func Load() (Config, error) {
 		NuvioAPIURL:   envOr("NUVIO_API_URL", DefaultNuvioAPIURL),
 		NuvioAnonKey:  envOr("NUVIO_ANON_KEY", DefaultNuvioAnonKey),
 		MetadataURL:   envOr("METADATA_URL", DefaultMetadataURL),
+		TMDBAPIKey:    os.Getenv("TMDB_API_KEY"),
+		TMDBBaseURL:   envOr("TMDB_BASE_URL", DefaultTMDBBaseURL),
 		BridgeToken:   os.Getenv("BRIDGE_TOKEN"),
 		Port:          DefaultPort,
 	}

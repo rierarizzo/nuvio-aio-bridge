@@ -132,10 +132,18 @@ titles is silently dropped.
 **Metadata on favourites.** Nuvio stores only what it is given, and the
 `watchlisted` event carries just the id. To stop a favourite added from
 AIOStreams landing in Nuvio with no name or poster, the bridge resolves the
-title's metadata from Cinemeta (`METADATA_URL`) before writing: name, poster,
-background, description, genres, release info and rating. Results are cached in
-memory for a day. If the title is unknown to the source, the id is written
-alone. This is why a favourite added from AIOStreams shows its artwork in Nuvio.
+title's metadata before writing: name, poster, background, description, genres,
+release info and rating. Results are cached in memory for a day. If the title is
+unknown to the source, the id is written alone.
+
+The resolver is a chain:
+
+1. **TMDB** when `TMDB_API_KEY` is set. It looks the title up by IMDb id and
+   stores the same `image.tmdb.org/t/p/w500` poster and `w1280` backdrop Nuvio
+   itself uses, so a favourite added from AIOStreams looks identical to one
+   added in Nuvio.
+2. **Cinemeta** (`METADATA_URL`) otherwise, with Metahub artwork upgraded from
+   `small` to `large`.
 
 Favourites added in Nuvio itself already carry Nuvio's own metadata, so the
 pull side needs no resolving.

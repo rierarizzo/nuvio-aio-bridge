@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sync"
 	"time"
 )
@@ -116,8 +117,8 @@ func (c *Client) fetch(ctx context.Context, mediaType, imdbID string) (Meta, boo
 
 	meta := Meta{
 		Name:        payload.Meta.Name,
-		Poster:      payload.Meta.Poster,
-		Background:  payload.Meta.Background,
+		Poster:      upgradeMetahub(payload.Meta.Poster, "poster"),
+		Background:  upgradeMetahub(payload.Meta.Background, "background"),
 		Description: payload.Meta.Description,
 		Genres:      payload.Meta.Genres,
 		ReleaseInfo: payload.Meta.ReleaseInfo,
@@ -126,6 +127,15 @@ func (c *Client) fetch(ctx context.Context, mediaType, imdbID string) (Meta, boo
 		meta.IMDBRating = rating
 	}
 	return meta, true
+}
+
+// upgradeMetahub asks Metahub for the largest artwork. Cinemeta returns the
+// small variant, which looks poor next to Nuvio's TMDB posters.
+func upgradeMetahub(url, kind string) string {
+	if url == "" {
+		return ""
+	}
+	return regexp.MustCompile(`/`+kind+`/small/`).ReplaceAllString(url, "/"+kind+"/large/")
 }
 
 func parseFloat(value string) (float64, error) {
