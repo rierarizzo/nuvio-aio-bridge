@@ -40,6 +40,13 @@ func main() {
 		Addr:              ":" + strconv.Itoa(cfg.Port),
 		Handler:           server.New(cfg.BridgeToken, nuvioClient, resolver, logger).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		// AIOStreams cuts a request at 15s, and a handler may wait on Nuvio,
+		// so the read and write budgets stay above that to avoid closing a
+		// request the caller still considers valid. IdleTimeout only applies
+		// between keep-alive requests.
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	go func() {
