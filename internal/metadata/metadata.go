@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -135,7 +135,7 @@ func upgradeMetahub(url, kind string) string {
 	if url == "" {
 		return ""
 	}
-	return regexp.MustCompile(`/`+kind+`/small/`).ReplaceAllString(url, "/"+kind+"/large/")
+	return strings.ReplaceAll(url, "/"+kind+"/small/", "/"+kind+"/large/")
 }
 
 func parseFloat(value string) (float64, error) {

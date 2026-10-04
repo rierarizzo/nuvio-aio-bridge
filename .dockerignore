@@ -1,0 +1,21 @@
+# Block secrets and local state from the Docker build context.
+
+# Environment files (real credentials live here)
+.env
+*.env
+.env.*
+
+# Version control
+.git
+.gitignore
+
+# Python caches used by tools/
+__pycache__/
+*.pyc
+
+# Local docs and notes
+*.md
+
+# Build output
+/bridge
+/bin/
