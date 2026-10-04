@@ -4,6 +4,12 @@ services:
     image: nuvio-aio-bridge:latest
     container_name: nuvio-bridge
     restart: unless-stopped
+    # Bound the json-file logs so a long-running bridge cannot fill the disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # No published ports: AIOStreams reaches the bridge by container name on
     # the shared Docker network. Attach the network AIOStreams uses.
     expose:
