@@ -8,10 +8,11 @@ import (
 	"strconv"
 )
 
-// Defaults for the Nuvio cloud API.
+// Defaults for the Nuvio cloud API and the metadata source.
 const (
 	DefaultNuvioAPIURL  = "https://api.nuvio.tv"
 	DefaultNuvioAnonKey = "sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN"
+	DefaultMetadataURL  = "https://v3-cinemeta.strem.io"
 	DefaultPort         = 8080
 )
 
@@ -23,6 +24,7 @@ type Config struct {
 	NuvioProfile  int
 	NuvioAPIURL   string
 	NuvioAnonKey  string
+	MetadataURL   string
 	BridgeToken   string
 	Port          int
 }
@@ -34,6 +36,7 @@ func Load() (Config, error) {
 		NuvioPassword: os.Getenv("NUVIO_PASSWORD"),
 		NuvioAPIURL:   envOr("NUVIO_API_URL", DefaultNuvioAPIURL),
 		NuvioAnonKey:  envOr("NUVIO_ANON_KEY", DefaultNuvioAnonKey),
+		MetadataURL:   envOr("METADATA_URL", DefaultMetadataURL),
 		BridgeToken:   os.Getenv("BRIDGE_TOKEN"),
 		Port:          DefaultPort,
 	}

@@ -80,7 +80,7 @@ func TestManifestDeclaresProgressEvents(t *testing.T) {
 }
 
 func TestManifestRequiresToken(t *testing.T) {
-	srv := New("secret", &fakeClient{}, nil)
+	srv := New("secret", &fakeClient{}, nil, nil)
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/wrong/manifest.json", nil))
 	if rec.Code != http.StatusNotFound {
@@ -89,7 +89,7 @@ func TestManifestRequiresToken(t *testing.T) {
 }
 
 func TestManifestServed(t *testing.T) {
-	srv := New("secret", &fakeClient{}, nil)
+	srv := New("secret", &fakeClient{}, nil, nil)
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secret/manifest.json", nil))
 	if rec.Code != http.StatusOK {
@@ -117,7 +117,7 @@ func TestPullBuildsWatchlistAndWatched(t *testing.T) {
 			{ContentID: "tt0903747", ContentType: "series"},
 		},
 	}
-	srv := New("secret", reader, nil)
+	srv := New("secret", reader, nil, nil)
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
 	if rec.Code != http.StatusOK {
@@ -150,7 +150,7 @@ func TestPullOmitsWatchedWhenSinceMatches(t *testing.T) {
 		library: []nuvio.LibraryItem{{ContentID: "tt0137523", ContentType: "movie"}},
 		watched: []nuvio.WatchedItem{{ContentID: "tt0137523", ContentType: "movie"}},
 	}
-	srv := New("secret", reader, nil)
+	srv := New("secret", reader, nil, nil)
 
 	first := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
@@ -177,7 +177,7 @@ func TestPullOmitsWatchedOnReadError(t *testing.T) {
 		library: []nuvio.LibraryItem{{ContentID: "tt0137523", ContentType: "movie"}},
 		wErr:    errors.New("boom"),
 	}
-	srv := New("secret", reader, nil)
+	srv := New("secret", reader, nil, nil)
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
 	var body map[string]json.RawMessage
@@ -207,7 +207,7 @@ func TestPushMapsEvents(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			client := &fakeClient{}
-			srv := New("secret", client, nil)
+			srv := New("secret", client, nil, nil)
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/secret/watch_state/push/movie/tt0137523.json", strings.NewReader(tc.body))
 			srv.Handler().ServeHTTP(rec, req)
@@ -231,7 +231,7 @@ func TestPullIncludesItems(t *testing.T) {
 			{ContentID: "tt0903747", ContentType: "series", Position: 1, Duration: 2}, // show-level, no episode
 		},
 	}
-	srv := New("secret", reader, nil)
+	srv := New("secret", reader, nil, nil)
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
 
@@ -263,7 +263,7 @@ func TestPullIncludesItems(t *testing.T) {
 }
 
 func TestPullReturnsErrorOnLibraryFailure(t *testing.T) {
-	srv := New("secret", &fakeClient{libErr: errors.New("nuvio down")}, nil)
+	srv := New("secret", &fakeClient{libErr: errors.New("nuvio down")}, nil, nil)
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
 	if rec.Code != http.StatusBadGateway {
@@ -276,7 +276,7 @@ func TestPullOmitsItemsOnProgressError(t *testing.T) {
 		library: []nuvio.LibraryItem{{ContentID: "tt0137523", ContentType: "movie"}},
 		progErr: errors.New("nuvio down"),
 	}
-	srv := New("secret", reader, nil)
+	srv := New("secret", reader, nil, nil)
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
 	if rec.Code != http.StatusOK {
@@ -293,7 +293,7 @@ func TestPullOmitsItemsOnProgressError(t *testing.T) {
 
 func TestPushDeduplicates(t *testing.T) {
 	client := &fakeClient{}
-	srv := New("secret", client, nil)
+	srv := New("secret", client, nil, nil)
 	body := `{"id":"dup","event":"watchlisted","scope":"movie","metaId":"tt0137523","at":1}`
 	for i := 0; i < 3; i++ {
 		rec := httptest.NewRecorder()
@@ -310,7 +310,7 @@ func TestPushDeduplicates(t *testing.T) {
 
 func TestPushIgnoresUnknownEvent(t *testing.T) {
 	client := &fakeClient{}
-	srv := New("secret", client, nil)
+	srv := New("secret", client, nil, nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/secret/watch_state/push/movie/tt0137523.json",
 		strings.NewReader(`{"id":"x","event":"dropped","scope":"movie","metaId":"tt0137523"}`))
@@ -325,7 +325,7 @@ func TestPushIgnoresUnknownEvent(t *testing.T) {
 
 func TestPushReturnsRetryableOnWriteError(t *testing.T) {
 	client := &fakeClient{writeErr: errors.New("nuvio down")}
-	srv := New("secret", client, nil)
+	srv := New("secret", client, nil, nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/secret/watch_state/push/movie/tt0137523.json",
 		strings.NewReader(`{"id":"e","event":"watchlisted","scope":"movie","metaId":"tt0137523"}`))
@@ -337,7 +337,7 @@ func TestPushReturnsRetryableOnWriteError(t *testing.T) {
 
 func TestPushReturnsAuthOnAuthError(t *testing.T) {
 	client := &fakeClient{writeErr: nuvio.ErrAuth}
-	srv := New("secret", client, nil)
+	srv := New("secret", client, nil, nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/secret/watch_state/push/movie/tt0137523.json",
 		strings.NewReader(`{"id":"a","event":"watchlisted","scope":"movie","metaId":"tt0137523"}`))

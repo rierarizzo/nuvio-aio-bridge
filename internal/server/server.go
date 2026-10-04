@@ -23,18 +23,20 @@ type NuvioClient interface {
 
 // Server holds the dependencies shared by the handlers.
 type Server struct {
-	token string
-	nuvio NuvioClient
-	log   *slog.Logger
-	dedup *deduper
+	token    string
+	nuvio    NuvioClient
+	metadata push.Resolver
+	log      *slog.Logger
+	dedup    *deduper
 }
 
-// New returns a server guarding its routes with token.
-func New(token string, client NuvioClient, logger *slog.Logger) *Server {
+// New returns a server guarding its routes with token. A nil metadata
+// resolver leaves favourites written with the id alone.
+func New(token string, client NuvioClient, resolver push.Resolver, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{token: token, nuvio: client, log: logger, dedup: newDeduper(4096)}
+	return &Server{token: token, nuvio: client, metadata: resolver, log: logger, dedup: newDeduper(4096)}
 }
 
 // Handler returns the HTTP handler with all routes registered.

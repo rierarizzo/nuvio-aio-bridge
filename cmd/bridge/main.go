@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/keneth/nuvio-aio-bridge/internal/config"
+	"github.com/keneth/nuvio-aio-bridge/internal/metadata"
 	"github.com/keneth/nuvio-aio-bridge/internal/nuvio"
 	"github.com/keneth/nuvio-aio-bridge/internal/server"
 )
@@ -27,10 +28,11 @@ func main() {
 	}
 
 	nuvioClient := nuvio.New(cfg.NuvioAPIURL, cfg.NuvioAnonKey, cfg.NuvioEmail, cfg.NuvioPassword, cfg.NuvioProfile)
+	metadataClient := metadata.New(cfg.MetadataURL)
 
 	httpServer := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
-		Handler:           server.New(cfg.BridgeToken, nuvioClient, logger).Handler(),
+		Handler:           server.New(cfg.BridgeToken, nuvioClient, metadataClient, logger).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

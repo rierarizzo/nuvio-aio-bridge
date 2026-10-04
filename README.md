@@ -36,6 +36,7 @@ All routes live under `/{BRIDGE_TOKEN}`, the addon base URL.
 | `BRIDGE_TOKEN` | yes | Random string used as part of the addon path |
 | `NUVIO_API_URL` | no | Defaults to `https://api.nuvio.tv` |
 | `NUVIO_ANON_KEY` | no | Defaults to Nuvio's public backend key |
+| `METADATA_URL` | no | Defaults to Cinemeta `https://v3-cinemeta.strem.io` |
 | `PORT` | no | Defaults to `8080` |
 
 Generate the token with `openssl rand -hex 32`.
@@ -68,14 +69,17 @@ reaches it by container name and no ports are published.
    docker compose up -d --build
    ```
 
-4. In AIOStreams, add the addon with the internal URL:
+4. In AIOStreams, add the addon with the internal manifest URL (including
+   `/manifest.json`):
 
    ```text
-   http://nuvio-bridge:8080/<BRIDGE_TOKEN>
+   http://nuvio-bridge:8080/<BRIDGE_TOKEN>/manifest.json
    ```
 
-   Then enable **Watch State** for it. If AIOStreams rejects private URLs, check
-   that `ALLOW_PRIVATE_URLS` is not disabled on the instance.
+   The token is the addon base (`{addonBase}`); the manifest URL is the base
+   plus `/manifest.json`. Then enable **Watch State** for it. If AIOStreams
+   rejects private URLs, check that `ALLOW_PRIVATE_URLS` is not disabled on the
+   instance.
 
 ## Development
 

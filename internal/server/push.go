@@ -49,7 +49,7 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok, err := push.Apply(r.Context(), s.nuvio, event)
+	ok, err := push.Apply(r.Context(), s.nuvio, s.metadata, event)
 	switch {
 	case err == nil:
 		s.log.Info("push: applied", "id", event.ID, "event", event.Event, "written", ok)

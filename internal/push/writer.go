@@ -3,6 +3,7 @@ package push
 import (
 	"context"
 
+	"github.com/keneth/nuvio-aio-bridge/internal/metadata"
 	"github.com/keneth/nuvio-aio-bridge/internal/nuvio"
 )
 
@@ -16,10 +17,18 @@ type Writer interface {
 	DeleteProgress(ctx context.Context, progressKey string) error
 }
 
+// Resolver fills a library entry's metadata. Nuvio stores only what it is
+// given, and the watchlisted event carries only the id.
+type Resolver interface {
+	Resolve(ctx context.Context, mediaType, imdbID string) (metadata.Meta, bool)
+}
+
 // Apply performs the Nuvio write for one event. It returns ok=false when the
 // event is understood but carries nothing actionable (for example no IMDb id),
 // which the caller should treat as delivered, not as a failure.
-func Apply(ctx context.Context, w Writer, e Event) (bool, error) {
+//
+// resolver may be nil, in which case a favourite is written with the id alone.
+func Apply(ctx context.Context, w Writer, resolver Resolver, e Event) (bool, error) {
 	imdb := e.IMDbID()
 	if imdb == "" {
 		return false, nil
@@ -27,11 +36,26 @@ func Apply(ctx context.Context, w Writer, e Event) (bool, error) {
 
 	switch e.Event {
 	case "watchlisted":
-		return true, w.AddToLibrary(ctx, nuvio.LibraryItem{
+		item := nuvio.LibraryItem{
 			ContentID:   imdb,
 			ContentType: e.MetaType(),
 			AddedAt:     e.At * 1000,
-		})
+		}
+		if resolver != nil {
+			if meta, ok := resolver.Resolve(ctx, e.MetaType(), imdb); ok {
+				item.Name = meta.Name
+				item.Poster = meta.Poster
+				item.Background = meta.Background
+				item.Description = meta.Description
+				item.Genres = meta.Genres
+				item.ReleaseInfo = meta.ReleaseInfo
+				if meta.IMDBRating > 0 {
+					rating := meta.IMDBRating
+					item.IMDBRating = &rating
+				}
+			}
+		}
+		return true, w.AddToLibrary(ctx, item)
 
 	case "unwatchlisted":
 		return true, w.RemoveFromLibrary(ctx, imdb)

@@ -54,6 +54,14 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 		payload.Items = pull.BuildItems(progress)
 	}
 
+	s.log.Info("pull served",
+		"since", since,
+		"version", version,
+		"watchlist", len(payload.Watchlist),
+		"watched_sent", payload.Watched != nil,
+		"items", len(payload.Items),
+	)
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		s.log.Error("pull: encode", "err", err)

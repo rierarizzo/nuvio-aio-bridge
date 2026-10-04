@@ -4,8 +4,18 @@ import (
 	"context"
 	"testing"
 
+	"github.com/keneth/nuvio-aio-bridge/internal/metadata"
 	"github.com/keneth/nuvio-aio-bridge/internal/nuvio"
 )
+
+type fakeResolver struct {
+	meta metadata.Meta
+	ok   bool
+}
+
+func (f fakeResolver) Resolve(context.Context, string, string) (metadata.Meta, bool) {
+	return f.meta, f.ok
+}
 
 type recorder struct {
 	added    []nuvio.LibraryItem
@@ -81,7 +91,7 @@ func TestApplyStopUnfinishedSetsProgress(t *testing.T) {
 		Season: ptr(3), Episode: ptr(7), PositionMs: 100, DurationMs: 1000,
 		Played: &played, At: 1700000000,
 	}
-	ok, err := Apply(context.Background(), rec, e)
+	ok, err := Apply(context.Background(), rec, nil, e)
 	if err != nil || !ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
@@ -96,7 +106,7 @@ func TestApplyStopUnfinishedSetsProgress(t *testing.T) {
 
 func TestApplyMissingIMDbIsNoOp(t *testing.T) {
 	rec := &recorder{}
-	ok, err := Apply(context.Background(), rec, Event{Event: "played", MetaID: "kitsu:1"})
+	ok, err := Apply(context.Background(), rec, nil, Event{Event: "played", MetaID: "kitsu:1"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -108,9 +118,52 @@ func TestApplyMissingIMDbIsNoOp(t *testing.T) {
 	}
 }
 
+func TestApplyWatchlistedEnrichesMetadata(t *testing.T) {
+	rec := &recorder{}
+	resolver := fakeResolver{
+		ok: true,
+		meta: metadata.Meta{
+			Name:        "American Horror Story",
+			Poster:      "https://images.metahub.space/poster/tt1844624/img",
+			Background:  "https://images.metahub.space/background/tt1844624/img",
+			Description: "An anthology horror drama series.",
+			Genres:      []string{"Drama", "Horror"},
+			ReleaseInfo: "2011",
+			IMDBRating:  8.0,
+		},
+	}
+	e := Event{Event: "watchlisted", Scope: "series", MetaID: "tt1844624", At: 1700000000}
+
+	ok, err := Apply(context.Background(), rec, resolver, e)
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if len(rec.added) != 1 {
+		t.Fatalf("added = %+v", rec.added)
+	}
+	got := rec.added[0]
+	if got.Name != "American Horror Story" || got.Poster == "" || got.Background == "" {
+		t.Errorf("metadata not enriched: %+v", got)
+	}
+	if got.IMDBRating == nil || *got.IMDBRating != 8.0 {
+		t.Errorf("rating = %v", got.IMDBRating)
+	}
+}
+
+func TestApplyWatchlistedWritesIDAloneWhenUnresolved(t *testing.T) {
+	rec := &recorder{}
+	e := Event{Event: "watchlisted", Scope: "movie", MetaID: "tt0137523", At: 1}
+	if ok, err := Apply(context.Background(), rec, fakeResolver{ok: false}, e); err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if len(rec.added) != 1 || rec.added[0].Name != "" {
+		t.Errorf("added = %+v", rec.added)
+	}
+}
+
 func TestApplyUnknownEventIsNoOp(t *testing.T) {
 	rec := &recorder{}
-	ok, err := Apply(context.Background(), rec, Event{Event: "dropped", MetaID: "tt0137523"})
+	ok, err := Apply(context.Background(), rec, nil, Event{Event: "dropped", MetaID: "tt0137523"})
 	if err != nil || ok {
 		t.Fatalf("ok=%v err=%v, want no-op", ok, err)
 	}
@@ -119,7 +172,7 @@ func TestApplyUnknownEventIsNoOp(t *testing.T) {
 func TestApplyStartAndPauseSetProgress(t *testing.T) {
 	for _, event := range []string{"start", "pause"} {
 		rec := &recorder{}
-		ok, err := Apply(context.Background(), rec, Event{
+		ok, err := Apply(context.Background(), rec, nil, Event{
 			Event: event, Scope: "episode", MetaID: "tt0903747",
 			Season: ptr(3), Episode: ptr(7), PositionMs: 100, DurationMs: 1000, At: 1,
 		})

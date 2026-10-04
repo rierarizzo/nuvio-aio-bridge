@@ -56,6 +56,7 @@ clients never connect to the bridge directly.
 | `internal/config` | Reads and validates environment variables |
 | `internal/manifest` | Builds the addon manifest |
 | `internal/nuvio` | Nuvio client: auth, session, reads and writes |
+| `internal/metadata` | Resolves title metadata (Cinemeta) for library writes |
 | `internal/pull` | Builds the pull payload and `version` token |
 | `internal/push` | Parses events and maps them to Nuvio writes |
 | `internal/server` | HTTP routes, token guard, dedup, status mapping |
@@ -127,6 +128,17 @@ the current library, merges the change, and pushes the whole list, preserving
 unrelated remote items. Nuvio only persists playback progress for titles it
 already knows (present in the library or watched history); progress for unknown
 titles is silently dropped.
+
+**Metadata on favourites.** Nuvio stores only what it is given, and the
+`watchlisted` event carries just the id. To stop a favourite added from
+AIOStreams landing in Nuvio with no name or poster, the bridge resolves the
+title's metadata from Cinemeta (`METADATA_URL`) before writing: name, poster,
+background, description, genres, release info and rating. Results are cached in
+memory for a day. If the title is unknown to the source, the id is written
+alone. This is why a favourite added from AIOStreams shows its artwork in Nuvio.
+
+Favourites added in Nuvio itself already carry Nuvio's own metadata, so the
+pull side needs no resolving.
 
 ## Pull rules
 
