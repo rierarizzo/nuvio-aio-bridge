@@ -121,7 +121,9 @@ bridge bounds its own upstream calls.
 
 **Idempotency.** `start`, `pause` and `stop` ids end in the playback position;
 `played` and `unplayed` ids end in the timestamp. The bridge drops a repeat id
-rather than writing again.
+rather than writing again. The id is only kept once the write succeeds: a
+retryable failure releases it, so the retry AIOStreams sends with the same id is
+applied instead of being mistaken for a duplicate.
 
 **Writing to Nuvio.** The library is a full snapshot replace: the bridge reads
 the current library, merges the change, and pushes the whole list, preserving

@@ -59,7 +59,9 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("push: auth problem", "err", err)
 		http.Error(w, "auth problem", http.StatusUnauthorized)
 	default:
-		// Retryable: let AIOStreams back off and try again.
+		// Retryable: let AIOStreams back off and try again. Release the id so
+		// the retry is applied instead of being dropped as a duplicate.
+		s.dedup.forget(event.ID)
 		s.log.Error("push: write failed", "id", event.ID, "event", event.Event, "err", err)
 		http.Error(w, "write failed", http.StatusBadGateway)
 	}

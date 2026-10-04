@@ -24,6 +24,23 @@ type fakeClient struct {
 
 	writeCalls []string
 	writeErr   error
+
+	// calls counts write attempts; failFirst, when > 0, makes only the first
+	// failFirst attempts fail with writeErr, to exercise retry handling.
+	calls     int
+	failFirst int
+}
+
+// record appends a write attempt and returns the configured error. With
+// failFirst == 0 every attempt fails when writeErr is set; with failFirst > 0
+// only the first attempts fail.
+func (f *fakeClient) record(name string) error {
+	f.writeCalls = append(f.writeCalls, name)
+	f.calls++
+	if f.failFirst > 0 && f.calls > f.failFirst {
+		return nil
+	}
+	return f.writeErr
 }
 
 func (f *fakeClient) Library(context.Context) ([]nuvio.LibraryItem, error) {
@@ -39,33 +56,27 @@ func (f *fakeClient) Progress(context.Context, int) ([]nuvio.ProgressItem, error
 }
 
 func (f *fakeClient) AddToLibrary(context.Context, nuvio.LibraryItem) error {
-	f.writeCalls = append(f.writeCalls, "add")
-	return f.writeErr
+	return f.record("add")
 }
 
 func (f *fakeClient) RemoveFromLibrary(context.Context, string) error {
-	f.writeCalls = append(f.writeCalls, "remove")
-	return f.writeErr
+	return f.record("remove")
 }
 
 func (f *fakeClient) MarkWatched(context.Context, nuvio.WatchedItem) error {
-	f.writeCalls = append(f.writeCalls, "mark")
-	return f.writeErr
+	return f.record("mark")
 }
 
 func (f *fakeClient) DeleteWatched(context.Context, nuvio.WatchedKey) error {
-	f.writeCalls = append(f.writeCalls, "unmark")
-	return f.writeErr
+	return f.record("unmark")
 }
 
 func (f *fakeClient) SetProgress(context.Context, nuvio.ProgressEntry) error {
-	f.writeCalls = append(f.writeCalls, "progress")
-	return f.writeErr
+	return f.record("progress")
 }
 
 func (f *fakeClient) DeleteProgress(context.Context, string) error {
-	f.writeCalls = append(f.writeCalls, "delprogress")
-	return f.writeErr
+	return f.record("delprogress")
 }
 
 var _ push.Writer = (*fakeClient)(nil)
@@ -357,6 +368,30 @@ func TestPushReturnsRetryableOnWriteError(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("want 502, got %d", rec.Code)
+	}
+}
+
+func TestPushAppliesAfterWriteFailure(t *testing.T) {
+	// A retryable failure must not consume the event id: AIOStreams retries
+	// with the same id, and that retry has to reach Nuvio, not be dropped as a
+	// duplicate.
+	client := &fakeClient{writeErr: errors.New("nuvio down"), failFirst: 1}
+	srv := New("secret", client, nil, nil)
+	body := `{"id":"retry","event":"watchlisted","scope":"movie","metaId":"tt0137523","at":1}`
+	post := func() int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/secret/watch_state/push/movie/tt0137523.json", strings.NewReader(body))
+		srv.Handler().ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := post(); code != http.StatusBadGateway {
+		t.Fatalf("first attempt: want 502, got %d", code)
+	}
+	if code := post(); code != http.StatusNoContent {
+		t.Fatalf("retry: want 204, got %d", code)
+	}
+	if len(client.writeCalls) != 2 {
+		t.Errorf("writeCalls = %v, want two attempts", client.writeCalls)
 	}
 }
 
