@@ -61,10 +61,11 @@ reaches it by container name and no ports are published.
    AIO_NETWORK=aiostreams_default
    ```
 
-3. Build and start:
+3. Build and start. `docker compose` reads `.env` automatically, so no extra
+   variables are needed:
 
    ```sh
-   AIO_NETWORK=aiostreams_default docker compose up -d --build
+   docker compose up -d --build
    ```
 
 4. In AIOStreams, add the addon with the internal URL:
