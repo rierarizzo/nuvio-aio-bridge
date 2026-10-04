@@ -1,0 +1,31 @@
+services:
+  nuvio-bridge:
+    build: .
+    image: nuvio-aio-bridge:latest
+    container_name: nuvio-bridge
+    restart: unless-stopped
+    # No published ports: AIOStreams reaches the bridge by container name on
+    # the shared Docker network. Attach the network AIOStreams uses.
+    expose:
+      - "8080"
+    environment:
+      NUVIO_EMAIL: ${NUVIO_EMAIL}
+      NUVIO_PASSWORD: ${NUVIO_PASSWORD}
+      NUVIO_PROFILE: ${NUVIO_PROFILE}
+      NUVIO_API_URL: ${NUVIO_API_URL:-https://api.nuvio.tv}
+      NUVIO_ANON_KEY: ${NUVIO_ANON_KEY:-sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN}
+      BRIDGE_TOKEN: ${BRIDGE_TOKEN}
+      PORT: "8080"
+    networks:
+      - aiostreams
+
+# The bridge joins the existing network AIOStreams already uses, so AIOStreams
+# reaches it by container name with no published ports.
+#
+# Find the name on the VPS with:
+#   docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' <aiostreams_container>
+# then set AIO_NETWORK to that name (e.g. aiostreams_default).
+networks:
+  aiostreams:
+    external: true
+    name: ${AIO_NETWORK:-aiostreams}
