@@ -407,4 +407,32 @@ func TestPushReturnsAuthOnAuthError(t *testing.T) {
 	}
 }
 
+func TestPushFallbackStripsJSONSuffix(t *testing.T) {
+	// The body omits metaId and scope, so both come from the path. The `.json`
+	// suffix AIOStreams appends must not leak into the id, or the event would
+	// be silently ignored.
+	client := &fakeClient{}
+	srv := New("secret", client, nil, nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/secret/watch_state/push/movie/tt0137523.json",
+		strings.NewReader(`{"id":"p","event":"watchlisted","at":1}`))
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d", rec.Code)
+	}
+	if len(client.writeCalls) != 1 || client.writeCalls[0] != "add" {
+		t.Errorf("writeCalls = %v, want [add]", client.writeCalls)
+	}
+}
+
+func TestPullReturnsAuthOnAuthError(t *testing.T) {
+	reader := &fakeClient{libErr: nuvio.ErrAuth}
+	srv := New("secret", reader, nil, nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secret/watch_state/pull.json", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", rec.Code)
+	}
+}
+
 func ptr(n int) *int { return &n }

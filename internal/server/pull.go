@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
+	"github.com/keneth/nuvio-aio-bridge/internal/nuvio"
 	"github.com/keneth/nuvio-aio-bridge/internal/pull"
 )
 
@@ -20,6 +22,10 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 	library, err := s.nuvio.Library(ctx)
 	if err != nil {
 		s.log.Error("pull: library read failed", "err", err)
+		if errors.Is(err, nuvio.ErrAuth) || errors.Is(err, nuvio.ErrProfileNotFound) {
+			http.Error(w, "auth problem", http.StatusUnauthorized)
+			return
+		}
 		http.Error(w, "nuvio library read failed", http.StatusBadGateway)
 		return
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/keneth/nuvio-aio-bridge/internal/nuvio"
 	"github.com/keneth/nuvio-aio-bridge/internal/push"
@@ -35,9 +36,11 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fall back to path values when the body omits them.
+	// Fall back to path values when the body omits them. AIOStreams appends
+	// `.json` to the id in the URL, and the {id} wildcard captures it, so the
+	// suffix has to be stripped before the value is used as an id.
 	if event.MetaID == "" {
-		event.MetaID = r.PathValue("id")
+		event.MetaID = strings.TrimSuffix(r.PathValue("id"), ".json")
 	}
 	if event.Scope == "" {
 		event.Scope = r.PathValue("type")
