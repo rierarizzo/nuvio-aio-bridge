@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/keneth/nuvio-aio-bridge/internal/nuvio"
@@ -29,8 +30,19 @@ type Payload struct {
 
 // Watched is the watched half of the answer.
 type Watched struct {
-	Movies   []string `json:"movies,omitempty"`
-	Episodes []string `json:"episodes,omitempty"`
+	Movies   []string         `json:"movies,omitempty"`
+	Episodes []string         `json:"episodes,omitempty"`
+	Counts   map[string]Count `json:"counts,omitempty"`
+}
+
+// Count is the watched tally for one show or movie. AIOStreams reads `at`
+// (Unix seconds) to date an imported row in its history, because the protocol
+// carries no per-episode timestamp. `watched` and `total` are advisory; the
+// total is unknown to the bridge, so it is 0. It follows the `version` gate.
+type Count struct {
+	Watched int   `json:"watched"`
+	Total   int   `json:"total"`
+	At      int64 `json:"at,omitempty"`
 }
 
 // WatchRow is one watchlist entry.
@@ -74,10 +86,17 @@ func Build(library []nuvio.LibraryItem, watched []nuvio.WatchedItem) (watchlist 
 
 	movieSet := map[string]struct{}{}
 	episodeSet := map[string]struct{}{}
+	episodeCount := map[string]int{}
+	lastAt := map[string]int64{}
 	for _, item := range watched {
 		typ, ok := metaType(item.ContentType)
 		if !ok || !strings.HasPrefix(item.ContentID, "tt") {
 			continue
+		}
+		if item.WatchedAt > 0 {
+			if at := item.WatchedAt / 1000; at > lastAt[item.ContentID] {
+				lastAt[item.ContentID] = at
+			}
 		}
 		if typ == "movie" {
 			movieSet[item.ContentID] = struct{}{}
@@ -87,14 +106,40 @@ func Build(library []nuvio.LibraryItem, watched []nuvio.WatchedItem) (watchlist 
 		if item.Season == nil || item.Episode == nil {
 			continue
 		}
-		episodeSet[episodeID(item.ContentID, *item.Season, *item.Episode)] = struct{}{}
+		key := episodeID(item.ContentID, *item.Season, *item.Episode)
+		if _, seen := episodeSet[key]; !seen {
+			episodeSet[key] = struct{}{}
+			episodeCount[item.ContentID]++
+		}
 	}
 
 	watchedSet.Movies = sortedKeys(movieSet)
 	watchedSet.Episodes = sortedKeys(episodeSet)
+	watchedSet.Counts = buildCounts(movieSet, episodeCount, lastAt)
 
 	version = versionToken(watchedSet)
 	return watchlist, watchedSet, version
+}
+
+// buildCounts reports, per show or movie, how many watched entries it has and
+// the timestamp of its last watch. Only titles with a known timestamp are
+// listed, because that is the only field AIOStreams consumes.
+func buildCounts(movies map[string]struct{}, episodes map[string]int, lastAt map[string]int64) map[string]Count {
+	counts := make(map[string]Count, len(movies)+len(episodes))
+	for id := range movies {
+		if at := lastAt[id]; at > 0 {
+			counts[id] = Count{Watched: 1, At: at}
+		}
+	}
+	for id, n := range episodes {
+		if at := lastAt[id]; at > 0 {
+			counts[id] = Count{Watched: n, At: at}
+		}
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
 }
 
 // BuildItems turns Nuvio progress rows into pull items. Rows that are
@@ -156,12 +201,15 @@ func videoID(showID string, season, episode int) string {
 }
 
 func versionToken(watched Watched) string {
-	parts := make([]string, 0, len(watched.Movies)+len(watched.Episodes))
+	parts := make([]string, 0, len(watched.Movies)+len(watched.Episodes)+len(watched.Counts))
 	for _, id := range watched.Movies {
 		parts = append(parts, "m:"+id)
 	}
 	for _, id := range watched.Episodes {
 		parts = append(parts, "e:"+id)
+	}
+	for id, count := range watched.Counts {
+		parts = append(parts, "c:"+id+":"+strconv.FormatInt(count.At, 10))
 	}
 	sort.Strings(parts)
 

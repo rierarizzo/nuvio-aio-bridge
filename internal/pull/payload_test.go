@@ -67,6 +67,30 @@ func TestWatchlistAtIsSeconds(t *testing.T) {
 	}
 }
 
+func TestBuildIncludesCounts(t *testing.T) {
+	watched := []nuvio.WatchedItem{
+		{ContentID: "tt0137523", ContentType: "movie", WatchedAt: 1_700_000_000_000},
+		{ContentID: "tt0903747", ContentType: "series", Season: ptr(3), Episode: ptr(7), WatchedAt: 1_700_000_100_000},
+		{ContentID: "tt0903747", ContentType: "series", Season: ptr(3), Episode: ptr(8), WatchedAt: 1_700_000_200_000},
+		{ContentID: "tt0903747", ContentType: "series", Season: ptr(3), Episode: ptr(8), WatchedAt: 1_700_000_200_000}, // duplicate
+	}
+	_, set, _ := Build(nil, watched)
+	if got := set.Counts["tt0137523"]; got.Watched != 1 || got.At != 1_700_000_000 {
+		t.Errorf("movie count = %+v", got)
+	}
+	if got := set.Counts["tt0903747"]; got.Watched != 2 || got.At != 1_700_000_200 {
+		t.Errorf("show count = %+v", got)
+	}
+}
+
+func TestVersionChangesWithWatchTimestamps(t *testing.T) {
+	_, _, v1 := Build(nil, []nuvio.WatchedItem{{ContentID: "tt0137523", ContentType: "movie", WatchedAt: 1_700_000_000_000}})
+	_, _, v2 := Build(nil, []nuvio.WatchedItem{{ContentID: "tt0137523", ContentType: "movie", WatchedAt: 1_700_000_001_000}})
+	if v1 == v2 {
+		t.Error("version should change when the last watch timestamp changes")
+	}
+}
+
 func TestSeasonZeroKept(t *testing.T) {
 	_, set, _ := Build(nil, []nuvio.WatchedItem{
 		{ContentID: "tt0903747", ContentType: "series", Season: ptr(0), Episode: ptr(2)},

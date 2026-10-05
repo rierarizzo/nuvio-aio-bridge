@@ -168,6 +168,12 @@ empty, because an empty list would delete what AIOStreams already imported.
   and `metaId` an IMDb id.
 - **`watched`:** `movies` with base ids and `episodes` with video ids such as
   `tt0903747:3:7`.
+- **`watched.counts`:** per show or movie, `{watched, total, at}` where `at` is
+  the last watch in Unix seconds. The protocol carries no per-episode timestamp,
+  so AIOStreams reads `at` to date an imported row in its history; `total` is
+  unknown to the bridge and sent as 0. It follows the `version` gate. Reading
+  `at` from `counts` is not documented, so it is best-effort: lose it and only
+  the date disappears, not the sync.
 - **IDs:** AIOStreams uses IMDb `tt...`; titles without one are skipped rather
   than guessed.
 - **Latency:** AIOStreams decides the read cadence, not this bridge. It re-reads
