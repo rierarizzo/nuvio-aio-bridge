@@ -181,14 +181,6 @@ func BuildItems(progress []nuvio.ProgressItem) []Item {
 	return items
 }
 
-// VersionToken computes the version from the watched set. The version only
-// describes what the watched gate depends on; it is stable across calls as long
-// as the watched content is unchanged. `items` and `watchlist` are never gated
-// by it.
-func VersionToken(watched Watched) string {
-	return versionToken(watched)
-}
-
 func percent(position, duration int64) float64 {
 	if duration <= 0 {
 		return 0
