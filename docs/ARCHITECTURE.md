@@ -170,8 +170,11 @@ empty, because an empty list would delete what AIOStreams already imported.
   `tt0903747:3:7`.
 - **IDs:** AIOStreams uses IMDb `tt...`; titles without one are skipped rather
   than guessed.
-- **Latency:** a change made in Nuvio reaches AIOStreams when `ttlSeconds`
-  expires (300 seconds).
+- **Latency:** AIOStreams decides the read cadence, not this bridge. It re-reads
+  on demand once `WATCH_STATE_PULL_TTL` (default 300 s) has passed and in the
+  background every `WATCH_STATE_PULL_INTERVAL` (default 1800 s). The manifest's
+  `ttlSeconds` is parsed by AIOStreams but not used to schedule reads, so
+  changing it here does not change how fast a Nuvio change arrives.
 - **Echo window:** a favorite changed in an AIOStreams app is not overwritten by
   a pull during the window, leaving time for the push to reach Nuvio.
 
