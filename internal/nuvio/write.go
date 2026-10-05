@@ -148,30 +148,51 @@ func setIfNotEmpty(row map[string]any, key, value string) {
 
 // MarkWatched upserts one watched entry.
 func (c *Client) MarkWatched(ctx context.Context, item WatchedItem) error {
-	row := map[string]any{
-		"content_id":   item.ContentID,
-		"content_type": item.ContentType,
-		"watched_at":   item.WatchedAt,
+	return c.MarkWatchedBatch(ctx, []WatchedItem{item})
+}
+
+// MarkWatchedBatch upserts several watched entries in one call. AIOStreams uses
+// it for a bulk mark over a whole show or season.
+func (c *Client) MarkWatchedBatch(ctx context.Context, items []WatchedItem) error {
+	if len(items) == 0 {
+		return nil
 	}
-	setIfNotEmpty(row, "title", item.Title)
-	if item.Season != nil {
-		row["season"] = *item.Season
-	}
-	if item.Episode != nil {
-		row["episode"] = *item.Episode
+	rows := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		row := map[string]any{
+			"content_id":   item.ContentID,
+			"content_type": item.ContentType,
+			"watched_at":   item.WatchedAt,
+		}
+		setIfNotEmpty(row, "title", item.Title)
+		if item.Season != nil {
+			row["season"] = *item.Season
+		}
+		if item.Episode != nil {
+			row["episode"] = *item.Episode
+		}
+		rows = append(rows, row)
 	}
 	_, err := c.rpc(ctx, "sync_push_watched_items", map[string]any{
 		"p_profile_id": c.profile,
-		"p_items":      []map[string]any{row},
+		"p_items":      rows,
 	})
 	return err
 }
 
 // DeleteWatched removes one watched entry.
 func (c *Client) DeleteWatched(ctx context.Context, key WatchedKey) error {
+	return c.DeleteWatchedBatch(ctx, []WatchedKey{key})
+}
+
+// DeleteWatchedBatch removes several watched entries in one call.
+func (c *Client) DeleteWatchedBatch(ctx context.Context, keys []WatchedKey) error {
+	if len(keys) == 0 {
+		return nil
+	}
 	_, err := c.rpc(ctx, "sync_delete_watched_items", map[string]any{
 		"p_profile_id": c.profile,
-		"p_keys":       []WatchedKey{key},
+		"p_keys":       keys,
 	})
 	return err
 }

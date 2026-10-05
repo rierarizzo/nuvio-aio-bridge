@@ -30,6 +30,9 @@ type WatchState struct {
 // Push lists the events the bridge accepts from AIOStreams.
 type Push struct {
 	Events []string `json:"events"`
+	// Bulk asks AIOStreams to send a whole-show or whole-season mark as one
+	// event (with a `videos` list) instead of one event per video.
+	Bulk bool `json:"bulk,omitempty"`
 }
 
 // Pull lists the parts of the answer the bridge fills and how long it is reused.
@@ -60,6 +63,7 @@ func Build() Manifest {
 			Version: 2,
 			Push: Push{
 				Events: []string{"start", "pause", "stop", "played", "unplayed", "watchlisted", "unwatchlisted"},
+				Bulk:   true,
 			},
 			Pull: Pull{
 				Items:      true,

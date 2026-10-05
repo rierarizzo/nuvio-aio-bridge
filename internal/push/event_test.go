@@ -18,12 +18,13 @@ func (f fakeResolver) Resolve(context.Context, string, string) (metadata.Meta, b
 }
 
 type recorder struct {
-	added    []nuvio.LibraryItem
-	removed  []string
-	marked   []nuvio.WatchedItem
-	unmarked []nuvio.WatchedKey
-	progress []nuvio.ProgressEntry
-	delProg  []string
+	added         []nuvio.LibraryItem
+	removed       []string
+	marked        []nuvio.WatchedItem
+	unmarked      []nuvio.WatchedKey
+	progress      []nuvio.ProgressEntry
+	delProg       []string
+	progressItems []nuvio.ProgressItem
 }
 
 func (r *recorder) AddToLibrary(_ context.Context, i nuvio.LibraryItem) error {
@@ -49,6 +50,17 @@ func (r *recorder) SetProgress(_ context.Context, e nuvio.ProgressEntry) error {
 func (r *recorder) DeleteProgress(_ context.Context, key string) error {
 	r.delProg = append(r.delProg, key)
 	return nil
+}
+func (r *recorder) MarkWatchedBatch(_ context.Context, items []nuvio.WatchedItem) error {
+	r.marked = append(r.marked, items...)
+	return nil
+}
+func (r *recorder) DeleteWatchedBatch(_ context.Context, keys []nuvio.WatchedKey) error {
+	r.unmarked = append(r.unmarked, keys...)
+	return nil
+}
+func (r *recorder) Progress(_ context.Context, _ int) ([]nuvio.ProgressItem, error) {
+	return r.progressItems, nil
 }
 
 func TestIMDbIDPrefersIDsMap(t *testing.T) {
@@ -225,6 +237,55 @@ func TestApplyStopFinishedClearsProgress(t *testing.T) {
 	}
 	if len(rec.marked) != 1 || len(rec.delProg) != 1 || rec.delProg[0] != "tt0137523" {
 		t.Fatalf("marked=%+v delProg=%v", rec.marked, rec.delProg)
+	}
+}
+
+func TestApplyBulkPlayedMarksVideos(t *testing.T) {
+	rec := &recorder{}
+	e := Event{
+		Event: "played", Scope: "season", MetaID: "tt0168366", Season: ptr(2), At: 1,
+		Videos: []Video{
+			{Season: ptr(2), Episode: ptr(1)},
+			{Season: ptr(2), Episode: ptr(2)},
+		},
+	}
+	ok, err := Apply(context.Background(), rec, nil, e)
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if len(rec.marked) != 2 {
+		t.Fatalf("marked = %+v", rec.marked)
+	}
+	if rec.marked[0].Season == nil || *rec.marked[0].Season != 2 || *rec.marked[0].Episode != 1 {
+		t.Errorf("first item = %+v", rec.marked[0])
+	}
+	if rec.marked[0].WatchedAt != 1000 {
+		t.Errorf("watchedAt = %d", rec.marked[0].WatchedAt)
+	}
+}
+
+func TestApplyBulkUnplayedDeletesVideosAndProgress(t *testing.T) {
+	rec := &recorder{progressItems: []nuvio.ProgressItem{
+		{ContentID: "tt0168366", Season: ptr(2), Episode: ptr(1), ProgressKey: "tt0168366_s2e1"},
+		{ContentID: "tt0168366", Season: ptr(3), Episode: ptr(1), ProgressKey: "tt0168366_s3e1"},
+	}}
+	e := Event{
+		Event: "unplayed", Scope: "season", MetaID: "tt0168366", Season: ptr(2),
+		Videos: []Video{
+			{Season: ptr(2), Episode: ptr(1)},
+			{Season: ptr(2), Episode: ptr(2)},
+		},
+	}
+	ok, err := Apply(context.Background(), rec, nil, e)
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if len(rec.unmarked) != 2 {
+		t.Fatalf("unmarked = %+v", rec.unmarked)
+	}
+	// Only the marked season's progress is cleared, not season 3.
+	if len(rec.delProg) != 1 || rec.delProg[0] != "tt0168366_s2e1" {
+		t.Fatalf("delProg = %v, want [tt0168366_s2e1]", rec.delProg)
 	}
 }
 

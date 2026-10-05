@@ -12,9 +12,17 @@ type Writer interface {
 	AddToLibrary(ctx context.Context, item nuvio.LibraryItem) error
 	RemoveFromLibrary(ctx context.Context, contentID string) error
 	MarkWatched(ctx context.Context, item nuvio.WatchedItem) error
+	MarkWatchedBatch(ctx context.Context, items []nuvio.WatchedItem) error
 	DeleteWatched(ctx context.Context, key nuvio.WatchedKey) error
+	DeleteWatchedBatch(ctx context.Context, keys []nuvio.WatchedKey) error
 	SetProgress(ctx context.Context, entry nuvio.ProgressEntry) error
 	DeleteProgress(ctx context.Context, progressKey string) error
+}
+
+// ProgressReader lets a bulk mark clear the resume points it covers. The Nuvio
+// client implements it; a writer without it skips that cleanup.
+type ProgressReader interface {
+	Progress(ctx context.Context, limit int) ([]nuvio.ProgressItem, error)
 }
 
 // Resolver fills a library entry's metadata. Nuvio stores only what it is
@@ -29,6 +37,10 @@ type Resolver interface {
 //
 // resolver may be nil, in which case a favourite is written with the id alone.
 func Apply(ctx context.Context, w Writer, resolver Resolver, e Event) (bool, error) {
+	if e.IsBulk() {
+		return applyBulk(ctx, w, e)
+	}
+
 	imdb := e.IMDbID()
 	if imdb == "" {
 		return false, nil
@@ -135,4 +147,87 @@ func videoID(e Event, imdb string) string {
 		return imdb
 	}
 	return imdb + ":" + itoa(*e.Season) + ":" + itoa(*e.Episode)
+}
+
+// applyBulk handles a mark over a whole show or season. AIOStreams sends this
+// only when the addon declares `bulk`; without it the same mark arrives as one
+// event per video. A large mark is split into independent parts, so returning
+// 2xx for one part accepts only that part.
+func applyBulk(ctx context.Context, w Writer, e Event) (bool, error) {
+	imdb := e.IMDbID()
+	if imdb == "" || len(e.Videos) == 0 {
+		return false, nil
+	}
+
+	switch e.Event {
+	case "played":
+		items := make([]nuvio.WatchedItem, 0, len(e.Videos))
+		for _, v := range e.Videos {
+			items = append(items, nuvio.WatchedItem{
+				ContentID:   imdb,
+				ContentType: "series",
+				Season:      v.Season,
+				Episode:     v.Episode,
+				WatchedAt:   e.At * 1000,
+			})
+		}
+		if err := w.MarkWatchedBatch(ctx, items); err != nil {
+			return true, err
+		}
+	case "unplayed":
+		keys := make([]nuvio.WatchedKey, 0, len(e.Videos))
+		for _, v := range e.Videos {
+			keys = append(keys, nuvio.WatchedKey{
+				ContentID: imdb,
+				Season:    v.Season,
+				Episode:   v.Episode,
+			})
+		}
+		if err := w.DeleteWatchedBatch(ctx, keys); err != nil {
+			return true, err
+		}
+	default:
+		return false, nil
+	}
+
+	return true, clearProgressForVideos(ctx, w, e, imdb)
+}
+
+// clearProgressForVideos removes the resume points a bulk mark covers. It reads
+// the small progress list once and deletes only the matching keys, rather than
+// one call per video. A failed read is best-effort: the watched write already
+// landed, so the mark still counts as applied.
+func clearProgressForVideos(ctx context.Context, w Writer, e Event, imdb string) error {
+	reader, ok := w.(ProgressReader)
+	if !ok {
+		return nil
+	}
+	rows, err := reader.Progress(ctx, 0)
+	if err != nil {
+		return nil
+	}
+
+	var season *int
+	if e.Scope == "season" {
+		season = e.Season
+	}
+	for _, row := range rows {
+		if row.ContentID != imdb {
+			continue
+		}
+		if season != nil && (row.Season == nil || *row.Season != *season) {
+			continue
+		}
+		key := row.ProgressKey
+		if key == "" && row.Season != nil && row.Episode != nil {
+			key = imdb + "_s" + itoa(*row.Season) + "e" + itoa(*row.Episode)
+		}
+		if key == "" {
+			continue
+		}
+		if err := w.DeleteProgress(ctx, key); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -68,8 +68,16 @@ func (f *fakeClient) MarkWatched(context.Context, nuvio.WatchedItem) error {
 	return f.record("mark")
 }
 
+func (f *fakeClient) MarkWatchedBatch(context.Context, []nuvio.WatchedItem) error {
+	return f.record("markbatch")
+}
+
 func (f *fakeClient) DeleteWatched(context.Context, nuvio.WatchedKey) error {
 	return f.record("unmark")
+}
+
+func (f *fakeClient) DeleteWatchedBatch(context.Context, []nuvio.WatchedKey) error {
+	return f.record("unmarkbatch")
 }
 
 func (f *fakeClient) SetProgress(context.Context, nuvio.ProgressEntry) error {
@@ -83,11 +91,15 @@ func (f *fakeClient) DeleteProgress(context.Context, string) error {
 var _ push.Writer = (*fakeClient)(nil)
 
 func TestManifestDeclaresProgressEvents(t *testing.T) {
-	events := strings.Join(manifest.Build().WatchState.Push.Events, ",")
+	m := manifest.Build()
+	events := strings.Join(m.WatchState.Push.Events, ",")
 	for _, want := range []string{"start", "pause", "stop", "played", "unplayed", "watchlisted", "unwatchlisted"} {
 		if !strings.Contains(events, want) {
 			t.Errorf("manifest events missing %q: %s", want, events)
 		}
+	}
+	if !m.WatchState.Push.Bulk {
+		t.Error("manifest should declare push.bulk")
 	}
 }
 
@@ -429,6 +441,31 @@ func TestPushFallbackStripsJSONSuffix(t *testing.T) {
 	}
 	if len(client.writeCalls) != 1 || client.writeCalls[0] != "add" {
 		t.Errorf("writeCalls = %v, want [add]", client.writeCalls)
+	}
+}
+
+func TestPushBulkMarksVideos(t *testing.T) {
+	for _, tc := range []struct {
+		event string
+		want  string
+	}{
+		{"played", "markbatch"},
+		{"unplayed", "unmarkbatch"},
+	} {
+		t.Run(tc.event, func(t *testing.T) {
+			client := &fakeClient{}
+			srv := New("secret", client, nil, nil)
+			body := `{"id":"b|tt0168366:2|` + tc.event + `|1757|1","event":"` + tc.event + `","scope":"season","at":1757441718,"metaId":"tt0168366","season":2,"videos":[{"videoId":"tt0168366:2:1","season":2,"episode":1},{"videoId":"tt0168366:2:2","season":2,"episode":2}],"part":1,"parts":1}`
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/secret/watch_state/push/series/tt0168366.json", strings.NewReader(body))
+			srv.Handler().ServeHTTP(rec, req)
+			if rec.Code != http.StatusNoContent {
+				t.Fatalf("want 204, got %d", rec.Code)
+			}
+			if len(client.writeCalls) != 1 || client.writeCalls[0] != tc.want {
+				t.Errorf("writeCalls = %v, want [%s]", client.writeCalls, tc.want)
+			}
+		})
 	}
 }
 

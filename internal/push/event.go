@@ -19,6 +19,19 @@ type Event struct {
 	Season     *int              `json:"season"`
 	Episode    *int              `json:"episode"`
 	IDs        map[string]string `json:"ids"`
+
+	// Bulk marks: `videos` is every video the show/season mark changed, and a
+	// large mark is split into independent parts.
+	Videos []Video `json:"videos"`
+	Part   int     `json:"part"`
+	Parts  int     `json:"parts"`
+}
+
+// Video is one episode inside a bulk mark.
+type Video struct {
+	VideoID string `json:"videoId"`
+	Season  *int   `json:"season"`
+	Episode *int   `json:"episode"`
 }
 
 // Parse decodes an event body.
@@ -46,6 +59,13 @@ func (e Event) MetaType() string {
 		return "movie"
 	}
 	return "series"
+}
+
+// IsBulk reports a mark over a whole show or season. AIOStreams sends the
+// `videos` list and a `series`/`season` scope only for bulk events, so a mark
+// on one video stays on the single-event path even when its scope is `series`.
+func (e Event) IsBulk() bool {
+	return len(e.Videos) > 0 && (e.Scope == "series" || e.Scope == "season")
 }
 
 // ProgressKey mirrors Nuvio's progress_key: bare id for a movie,
