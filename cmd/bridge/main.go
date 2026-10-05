@@ -38,6 +38,17 @@ func main() {
 
 	nuvioClient := nuvio.New(cfg.NuvioAPIURL, cfg.NuvioAnonKey, cfg.NuvioEmail, cfg.NuvioPassword, cfg.NuvioProfile)
 
+	// Validate the configured profile once, so a wrong profile or rejected
+	// credentials fail at startup instead of on the first event. A transient
+	// Nuvio error only warns.
+	checkCtx, cancelCheck := context.WithTimeout(context.Background(), 10*time.Second)
+	err = validateProfile(checkCtx, nuvioClient, logger)
+	cancelCheck()
+	if err != nil {
+		logger.Error("nuvio profile validation failed", "err", err)
+		os.Exit(1)
+	}
+
 	// TMDB first, so artwork matches Nuvio's own; Cinemeta covers the rest.
 	cinemeta := metadata.New(cfg.MetadataURL)
 	var resolver metadata.Resolver = cinemeta
@@ -77,6 +88,29 @@ func main() {
 	defer cancel()
 	if err := httpServer.Shutdown(ctx); err != nil {
 		logger.Error("shutdown", "err", err)
+	}
+}
+
+// profileChecker is the startup validation surface, kept as an interface so it
+// can be tested without a Nuvio account.
+type profileChecker interface {
+	ProfileIndex(ctx context.Context) (int, string, error)
+}
+
+// validateProfile checks the configured profile once. A missing profile or
+// rejected credentials is a misconfiguration and stops the bridge; any other
+// error (network, server) is transient, so it warns and lets the bridge start.
+func validateProfile(ctx context.Context, c profileChecker, log *slog.Logger) error {
+	index, name, err := c.ProfileIndex(ctx)
+	switch {
+	case err == nil:
+		log.Info("nuvio profile", "index", index, "name", name)
+		return nil
+	case errors.Is(err, nuvio.ErrAuth), errors.Is(err, nuvio.ErrProfileNotFound):
+		return err
+	default:
+		log.Warn("could not validate nuvio profile at startup; continuing", "err", err)
+		return nil
 	}
 }
 
