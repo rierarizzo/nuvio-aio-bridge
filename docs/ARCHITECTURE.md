@@ -215,6 +215,22 @@ empty, because an empty list would delete what AIOStreams already imported.
 - A profile is selected by integer `profile_index` (1-6).
 - Progress upserts require the title to already exist in Nuvio.
 
+## Known limitations
+
+- **Next Up is one-directional.** AIOStreams computes Next Up from the `watched`
+  half of the pull: it finds the furthest watched episode of a show and offers
+  the following one. Nuvio's Continue Watching is fed only by the rows in
+  `sync_pull_watch_progress`; it does not synthesize a next episode from its
+  watched history. The `watch_state` push protocol carries no next-up signal, so
+  when an episode is finished in an AIOStreams client the bridge marks it
+  watched and clears its resume point, and Nuvio drops the show from Continue
+  Watching until the next episode is actually started (which sends a `start` or
+  `stop` event and writes a new progress row). A show whose latest episode is
+  watched can therefore show a next chapter in AIOStreams and nothing in Nuvio.
+  Closing the gap would need either a bridge-side next-episode lookup (resolve
+  the following episode and write a resume point) or a Nuvio client that
+  computes next-up from watched history; neither is implemented today.
+
 ## References and licensing
 
 The Nuvio API was understood by reading [Scrob](https://github.com/ellite/scrob)
