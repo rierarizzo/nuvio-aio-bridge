@@ -12,6 +12,12 @@ AIOStreams on the same Docker network.
 - **AIOStreams → Nuvio (push):** favorites, watched marks and playback from the
   AIOStreams apps (browser, desktop, Jellyfin clients) are written to Nuvio.
 
+Sync is event-driven on the AIOStreams → Nuvio side: only changes made through
+the AIOStreams apps while the bridge is running are pushed. State that already
+existed in AIOStreams is not imported, and because the pull sends complete
+lists, an empty Nuvio clears AIOStreams favorites on the first read. See
+[Known limitations](docs/ARCHITECTURE.md#known-limitations).
+
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and
 [docs/nuvio-api.md](docs/nuvio-api.md) for the Nuvio API contract as verified
 against a live account.

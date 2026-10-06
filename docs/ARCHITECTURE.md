@@ -164,7 +164,10 @@ pull side needs no resolving.
 
 `watchlist` and `watched` are complete lists: anything the bridge leaves out is
 removed from AIOStreams. On any read failure the field is omitted, never sent
-empty, because an empty list would delete what AIOStreams already imported.
+empty, because an empty list would delete what AIOStreams already imported. A
+genuinely empty Nuvio is not a read failure, though: the bridge sends the empty
+list, so favorites and history already in AIOStreams are removed. See
+[Known limitations](#known-limitations).
 
 - **`version`:** a stable token describing the `watched` portion, derived from
   its sorted ids. It is not derived from credentials or volatile data. If
@@ -194,8 +197,12 @@ empty, because an empty list would delete what AIOStreams already imported.
   background every `WATCH_STATE_PULL_INTERVAL` (default 1800 s). The manifest's
   `ttlSeconds` is parsed by AIOStreams but not used to schedule reads, so
   changing it here does not change how fast a Nuvio change arrives.
-- **Echo window:** a favorite changed in an AIOStreams app is not overwritten by
-  a pull during the window, leaving time for the push to reach Nuvio.
+- **Echo window:** enforced by AIOStreams, not the bridge. A favourite changed in
+  an AIOStreams app is not overwritten by a pull for `WATCH_STATE_ECHO_WINDOW`
+  (default 600 s), so a `watchlisted` or `unwatchlisted` still on its way to the
+  bridge does not flip back. The bridge keeps no window of its own: a pull that
+  runs while a push is still in flight can return a snapshot that predates it,
+  and the next pull restores it once the write landed.
 
 ## Failure behavior
 
@@ -206,6 +213,10 @@ empty, because an empty list would delete what AIOStreams already imported.
 - With Nuvio unreachable, pull fails with `502` rather than deleting state, and
   push returns `502` so AIOStreams retries. A failed watched or progress read
   omits only that field.
+- At startup the bridge validates the Nuvio profile once: rejected credentials
+  or a missing profile stop the process, any other error only warns. It does not
+  perform a full read, so a Nuvio outage surfaces on the first pull rather than
+  at boot.
 
 ## Nuvio constraints
 
@@ -216,6 +227,18 @@ empty, because an empty list would delete what AIOStreams already imported.
 - Progress upserts require the title to already exist in Nuvio.
 
 ## Known limitations
+
+- **No bootstrap from AIOStreams, and an empty Nuvio clears it.** The sync is
+  event-driven in the AIOStreams → Nuvio direction: only changes made through
+  the AIOStreams apps (or its media server) while the bridge is running are
+  pushed. State that already existed in AIOStreams does not generate events and
+  is never imported, so a populated AIOStreams next to an empty Nuvio does not
+  converge upward. Worse, because `watchlist` and `watched` are complete lists,
+  the first pull from an empty Nuvio answers with `watchlist: []` and
+  AIOStreams removes the favorites it already had. Populating Nuvio from
+  AIOStreams needs a one-off import outside the bridge, or the AIOStreams state
+  to be re-emitted as events; the bridge has no way to read AIOStreams, so no
+  startup sync or scheduled job can reconcile that direction.
 
 - **Next Up is one-directional.** AIOStreams computes Next Up from the `watched`
   half of the pull: it finds the furthest watched episode of a show and offers
@@ -230,6 +253,12 @@ empty, because an empty list would delete what AIOStreams already imported.
   Closing the gap would need either a bridge-side next-episode lookup (resolve
   the following episode and write a resume point) or a Nuvio client that
   computes next-up from watched history; neither is implemented today.
+
+- **Event dedup is in memory.** The store that drops a repeated event `id`
+  (`internal/server/dedup.go`) lives only in RAM, so it is lost on restart and
+  an event AIOStreams retries across one can be applied a second time. The
+  writes are idempotent in practice (library snapshot replace, `MarkWatched`,
+  `SetProgress`), so the effect is a repeated write, not corrupted state.
 
 ## References and licensing
 
