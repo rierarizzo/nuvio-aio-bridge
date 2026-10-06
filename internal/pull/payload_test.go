@@ -132,4 +132,35 @@ func TestBuildItemsKeepsUnknownDuration(t *testing.T) {
 	}
 }
 
+func TestDropInProgressRemovesRewatches(t *testing.T) {
+	watched := []nuvio.WatchedItem{
+		{ContentID: "tt0137523", ContentType: "movie"},
+		{ContentID: "tt0903747", ContentType: "series", Season: ptr(3), Episode: ptr(7)},
+		{ContentID: "tt0903747", ContentType: "series", Season: ptr(3), Episode: ptr(8)},
+		{ContentID: "tt0903747", ContentType: "series"}, // show-level, no episode
+	}
+	items := []Item{
+		{Type: "movie", MetaID: "tt0137523", VideoID: "tt0137523"},
+		{Type: "series", MetaID: "tt0903747", VideoID: "tt0903747:3:7", Season: ptr(3), Episode: ptr(7)},
+	}
+
+	got := DropInProgress(watched, items)
+	if len(got) != 2 {
+		t.Fatalf("kept = %+v, want 2", got)
+	}
+	if got[0].Season == nil || *got[0].Season != 3 || *got[0].Episode != 8 {
+		t.Errorf("kept episode = %+v, want 3:8", got[0])
+	}
+	if got[1].Season != nil {
+		t.Errorf("show-level row was dropped: %+v", got[1])
+	}
+}
+
+func TestDropInProgressNoItemsKeepsWatched(t *testing.T) {
+	watched := []nuvio.WatchedItem{{ContentID: "tt0137523", ContentType: "movie"}}
+	if got := DropInProgress(watched, nil); len(got) != 1 {
+		t.Fatalf("kept = %+v, want the watched list unchanged", got)
+	}
+}
+
 func ptr(n int) *int { return &n }

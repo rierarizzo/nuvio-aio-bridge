@@ -172,7 +172,11 @@ empty, because an empty list would delete what AIOStreams already imported.
 - **`items`:** in-progress playback, never gated by `version`. Built with
   `progressPercent`, `positionMs` and `durationMs`, newest first. Finished items
   (at or above the played threshold), `sport` rows and series rows without an
-  episode are excluded.
+  episode are excluded. A video named here is removed from `watched`, because
+  AIOStreams imports `items` first and `watched` second, and its watched import
+  clears the resume position of every video it names: naming a rewatch in both
+  halves would erase the position just imported. When the progress read fails,
+  `items` is omitted and `watched` is sent whole (no facts to reconcile).
 - **`watchlist`:** list of `{type, metaId, at}` with `type` `movie` or `series`
   and `metaId` an IMDb id.
 - **`watched`:** `movies` with base ids and `episodes` with video ids such as

@@ -328,8 +328,10 @@ func TestEndToEndPullFiltersNuvioState(t *testing.T) {
 	if len(p.Watched.Movies) != 1 || p.Watched.Movies[0] != "tt0137523" {
 		t.Fatalf("movies = %v", p.Watched.Movies)
 	}
-	if len(p.Watched.Episodes) != 1 || p.Watched.Episodes[0] != "tt0903747:3:7" {
-		t.Fatalf("episodes = %v", p.Watched.Episodes)
+	// The in-progress episode is named by `items` alone: were it also in
+	// `watched`, AIOStreams would clear the resume position on import.
+	if len(p.Watched.Episodes) != 0 {
+		t.Fatalf("episodes = %v, want none (in progress)", p.Watched.Episodes)
 	}
 	if len(p.Items) != 1 || p.Items[0].VideoID != "tt0903747:3:7" {
 		t.Fatalf("items = %+v", p.Items)

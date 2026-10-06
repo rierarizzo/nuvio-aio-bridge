@@ -71,13 +71,27 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// `items` is small, changes constantly and is never gated by `version`.
+	// A failed read omits it rather than sending an empty list.
+	var items []pull.Item
+	if progErr != nil {
+		s.log.Error("pull: progress read failed", "err", progErr)
+	} else {
+		items = pull.BuildItems(progress)
+	}
+
 	watchlist, watched, version := pull.Build(library, nil)
 
 	// The watched half needs a second pass. If it fails, omit it (no info)
 	// instead of sending an empty list that would wipe imported history.
 	watchedOK := watchedErr == nil
 	if watchedOK {
-		watchlist, watched, version = pull.Build(library, rows)
+		// Name an in-progress video in `items` alone: AIOStreams imports
+		// `items` before `watched` and its watched import clears the resume
+		// position of every video it names, which would drop a rewatch from
+		// Continue Watching. When the progress read failed, `items` is empty
+		// and the watched list is left whole.
+		watchlist, watched, version = pull.Build(library, pull.DropInProgress(rows, items))
 	} else {
 		s.log.Error("pull: watched read failed", "err", watchedErr)
 	}
@@ -91,13 +105,7 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 	}
 	payload.Version = version
 
-	// `items` is small, changes constantly and is never gated by `version`.
-	// A failed read omits it rather than sending an empty list.
-	if progErr != nil {
-		s.log.Error("pull: progress read failed", "err", progErr)
-	} else {
-		payload.Items = pull.BuildItems(progress)
-	}
+	payload.Items = items
 
 	watchlistCount := 0
 	if payload.Watchlist != nil {

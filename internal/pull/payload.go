@@ -142,6 +142,42 @@ func buildCounts(movies map[string]struct{}, episodes map[string]int, lastAt map
 	return counts
 }
 
+// DropInProgress removes watched rows for videos that are also listed as
+// in-progress items, so the same episode is not named by both halves of the
+// answer. AIOStreams imports `items` first and `watched` second, and its
+// watched import clears the resume position of every video it names. Sending
+// the video in both halves therefore erases the resume point it just took from
+// `items`, dropping a rewatch out of Continue Watching. The progress row is
+// the newer fact, so the stale watched row yields to it.
+//
+// A finished row (at or above the played threshold) is not an item, so it is
+// left in `watched` and comes back once the rewatch is done.
+func DropInProgress(watched []nuvio.WatchedItem, items []Item) []nuvio.WatchedItem {
+	if len(watched) == 0 || len(items) == 0 {
+		return watched
+	}
+
+	inProgress := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		if item.VideoID != "" {
+			inProgress[item.VideoID] = struct{}{}
+		}
+	}
+
+	kept := make([]nuvio.WatchedItem, 0, len(watched))
+	for _, row := range watched {
+		key := row.ContentID
+		if row.Season != nil && row.Episode != nil {
+			key = episodeID(row.ContentID, *row.Season, *row.Episode)
+		}
+		if _, ok := inProgress[key]; ok {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	return kept
+}
+
 // BuildItems turns Nuvio progress rows into pull items. Rows that are
 // finished (position at or above duration, or the played threshold) are left
 // out: they belong in `watched`, not in Continue Watching. Non movie/series
