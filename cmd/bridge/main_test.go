@@ -5,6 +5,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/keneth/nuvio-aio-bridge/internal/nuvio"
@@ -34,5 +37,46 @@ func TestValidateProfile(t *testing.T) {
 	}
 	if err := validateProfile(context.Background(), stubChecker{err: errors.New("network")}, log); err != nil {
 		t.Errorf("transient error should not fail startup, got %v", err)
+	}
+}
+
+func TestProbeHealth(t *testing.T) {
+	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ok.Close()
+	u, err := url.Parse(ok.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PORT", u.Port())
+	if code := probeHealth(); code != 0 {
+		t.Errorf("healthy probe = %d, want 0", code)
+	}
+
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer bad.Close()
+	ub, err := url.Parse(bad.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PORT", ub.Port())
+	if code := probeHealth(); code != 1 {
+		t.Errorf("500 probe = %d, want 1", code)
+	}
+
+	// A port with nothing listening refuses the connection. Bind then close a
+	// listener so the port is free without guessing one.
+	closed := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	uc, err := url.Parse(closed.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed.Close()
+	t.Setenv("PORT", uc.Port())
+	if code := probeHealth(); code != 1 {
+		t.Errorf("refused probe = %d, want 1", code)
 	}
 }

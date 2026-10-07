@@ -1,0 +1,44 @@
+{
+  "id": "local.nuvio-bridge",
+  "version": "0.1.0",
+  "name": "Nuvio Bridge",
+  "description": "Sync with Nuvio",
+  "types": [
+    "movie",
+    "series"
+  ],
+  "catalogs": [],
+  "resources": [
+    {
+      "name": "watch_state",
+      "types": [
+        "movie",
+        "series"
+      ],
+      "idPrefixes": [
+        "tt"
+      ]
+    }
+  ],
+  "watchState": {
+    "version": 2,
+    "push": {
+      "events": [
+        "start",
+        "pause",
+        "stop",
+        "played",
+        "unplayed",
+        "watchlisted",
+        "unwatchlisted"
+      ],
+      "bulk": true
+    },
+    "pull": {
+      "items": true,
+      "watched": true,
+      "watchlist": true,
+      "ttlSeconds": 300
+    }
+  }
+}
