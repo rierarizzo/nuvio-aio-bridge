@@ -254,6 +254,20 @@ list, so favorites and history already in AIOStreams are removed. See
   the following episode and write a resume point) or a Nuvio client that
   computes next-up from watched history; neither is implemented today.
 
+- **Minimum progress differs between the two sides.** AIOStreams keeps no
+  resume point for playback that stops before `WATCH_STATE_MIN_RESUME_PERCENT`
+  (5% by default), or for an item shorter than 90 seconds, so a title abandoned
+  after a few seconds stays out of its Continue Watching. Its pull import
+  applies a second, hardcoded floor of 2%. The bridge applies neither: the push
+  path writes the `positionMs` the event carries straight to Nuvio, and
+  `BuildItems` only filters the upper bound (the 90% played threshold). A
+  very-low-progress title therefore appears in Nuvio's Continue Watching but not
+  in AIOStreams, and a pull does not reconcile it because the import zeroes the
+  position again. The bridge does not replicate the thresholds on purpose: they
+  are AIOStreams-internal and configurable, the protocol does not expose them,
+  and a bridge-side minimum would silently drop legitimate resume points that
+  Nuvio would otherwise keep.
+
 - **Event dedup is in memory.** The store that drops a repeated event `id`
   (`internal/server/dedup.go`) lives only in RAM, so it is lost on restart and
   an event AIOStreams retries across one can be applied a second time. The
